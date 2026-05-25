@@ -27,7 +27,10 @@ function chipDenominationsFor(amount) {
 </script>
 
 <template>
-  <div class="flex flex-col items-center gap-2">
+  <!-- Lay pots out horizontally so multiple side pots use the wide centre band of the
+       felt instead of stacking downward and colliding with the bottom-centre (human)
+       seat. Each pot is still a vertical column of chips + label. -->
+  <div class="flex flex-row items-end justify-center gap-6">
     <div
       v-for="(pot, i) in pots"
       :key="i"
@@ -41,7 +44,7 @@ function chipDenominationsFor(amount) {
           :size="26"
         />
       </div>
-      <div class="num-tab font-display text-[13px] tracking-wide text-[oklch(0.82_0.07_82)]">
+      <div class="num-tab font-display text-[13px] tracking-wide text-[oklch(0.82_0.07_82)] whitespace-nowrap">
         <span class="uppercase text-[10px] tracking-[0.2em] text-[oklch(0.70_0.06_82/0.85)] mr-1.5">
           {{ pot.label ?? (i === 0 ? 'Pot' : `Side ${i}`) }}
         </span>

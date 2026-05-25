@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Seat from './Seat.vue'
 import Card from './Card.vue'
 import PotDisplay from './PotDisplay.vue'
@@ -24,68 +24,145 @@ const orderedPlayers = computed(() => {
   return [...players.slice(humanIdx), ...players.slice(0, humanIdx)]
 })
 
-// Place seats evenly around the perimeter of a rounded-rectangle table, with index 0
-// (the human) anchored at bottom-centre and remaining seats walking counter-clockwise.
-// Spacing is in *pixel* terms (vertical edges weighted by 1/ASPECT) so adjacent seats
-// land the same physical distance apart whether they're on a long edge or a short one.
-const SEAT_INSET = 16          // % from table edge to the seat arc on all sides
-const TABLE_ASPECT = 2         // table width / height — keep in sync with the aspect-[2/1] class
-function seatPos(index, total) {
-  const L = SEAT_INSET, R = 100 - SEAT_INSET, T = SEAT_INSET, B = 100 - SEAT_INSET
-  const horizHalf = (R - L) / 2          // bottom (and top) half-edge length in width-%
-  const vertEdge = (B - T) / TABLE_ASPECT // side length converted to width-equivalent %
-  const topEdge  = (R - L)
-  const perimeter = horizHalf * 2 + vertEdge * 2 + topEdge
-
-  const d = (index / total) * perimeter
-  let x, y
-  if (d <= horizHalf) {
-    // bottom edge, centre → left
-    x = 50 - d; y = B
-  } else if (d <= horizHalf + vertEdge) {
-    // left edge, bottom → top
-    x = L; y = B - (d - horizHalf) * TABLE_ASPECT
-  } else if (d <= horizHalf + vertEdge + topEdge) {
-    // top edge, left → right
-    x = L + (d - horizHalf - vertEdge); y = T
-  } else if (d <= horizHalf + vertEdge + topEdge + vertEdge) {
-    // right edge, top → bottom
-    x = R; y = T + (d - horizHalf - vertEdge - topEdge) * TABLE_ASPECT
-  } else {
-    // bottom edge, right → centre
-    x = R - (d - horizHalf - vertEdge - topEdge - vertEdge); y = B
-  }
-  return { x, y }
+// Hand-tuned seat layouts per player count, modelled on real race-track poker
+// tables: seats live only on the long top/bottom edges and the short side edges —
+// never in the corners — and the central band y ∈ [40, 64] is reserved for the
+// community cards, pot display, and winner banner. Each entry holds the seat
+// position (x, y), the bet-chip position (bx, by) placed between the seat and
+// that reserved centre band, and an anchor that drives speech-bubble direction.
+// Seat 0 is always the human at bottom-centre; remaining seats walk counter-
+// clockwise (bottom-left → left → top → right → bottom-right). All numbers are
+// percentages of the 1900×950 design canvas (see TABLE_W / TABLE_H below).
+const LAYOUTS = {
+  2: [
+    { x: 50, y: 78, bx: 50, by: 70, anchor: 'side' },
+    { x: 50, y: 18, bx: 50, by: 37, anchor: 'top'  },
+  ],
+  3: [
+    { x: 50, y: 78, bx: 50, by: 70, anchor: 'side' },
+    { x: 22, y: 22, bx: 34, by: 37, anchor: 'top'  },
+    { x: 78, y: 22, bx: 66, by: 37, anchor: 'top'  },
+  ],
+  4: [
+    { x: 50, y: 78, bx: 50, by: 70, anchor: 'side' },
+    { x: 14, y: 50, bx: 28, by: 50, anchor: 'side' },
+    { x: 50, y: 18, bx: 50, by: 37, anchor: 'top'  },
+    { x: 86, y: 50, bx: 72, by: 50, anchor: 'side' },
+  ],
+  5: [
+    { x: 50, y: 78, bx: 50, by: 70, anchor: 'side' },
+    { x: 18, y: 68, bx: 30, by: 64, anchor: 'side' },
+    { x: 24, y: 22, bx: 36, by: 37, anchor: 'top'  },
+    { x: 76, y: 22, bx: 64, by: 37, anchor: 'top'  },
+    { x: 82, y: 68, bx: 70, by: 64, anchor: 'side' },
+  ],
+  6: [
+    { x: 50, y: 78, bx: 50, by: 70, anchor: 'side' },
+    { x: 16, y: 70, bx: 30, by: 64, anchor: 'side' },
+    { x: 16, y: 30, bx: 30, by: 38, anchor: 'side' },
+    { x: 50, y: 18, bx: 50, by: 37, anchor: 'top'  },
+    { x: 84, y: 30, bx: 70, by: 38, anchor: 'side' },
+    { x: 84, y: 70, bx: 70, by: 64, anchor: 'side' },
+  ],
+  7: [
+    { x: 50, y: 78, bx: 50, by: 70, anchor: 'side' },
+    { x: 22, y: 72, bx: 33, by: 66, anchor: 'side' },
+    { x: 13, y: 44, bx: 25, by: 46, anchor: 'side' },
+    { x: 30, y: 20, bx: 38, by: 37, anchor: 'top'  },
+    { x: 70, y: 20, bx: 62, by: 37, anchor: 'top'  },
+    { x: 87, y: 44, bx: 75, by: 46, anchor: 'side' },
+    { x: 78, y: 72, bx: 67, by: 66, anchor: 'side' },
+  ],
+  8: [
+    { x: 50, y: 78, bx: 50, by: 70, anchor: 'side' },
+    { x: 22, y: 74, bx: 33, by: 67, anchor: 'side' },
+    { x: 12, y: 50, bx: 24, by: 50, anchor: 'side' },
+    { x: 22, y: 22, bx: 33, by: 38, anchor: 'top'  },
+    { x: 50, y: 18, bx: 50, by: 37, anchor: 'top'  },
+    { x: 78, y: 22, bx: 67, by: 38, anchor: 'top'  },
+    { x: 88, y: 50, bx: 76, by: 50, anchor: 'side' },
+    { x: 78, y: 74, bx: 67, by: 67, anchor: 'side' },
+  ],
+  9: [
+    { x: 50, y: 78, bx: 50, by: 70, anchor: 'side' },
+    { x: 25, y: 75, bx: 34, by: 68, anchor: 'side' },
+    { x: 13, y: 55, bx: 25, by: 53, anchor: 'side' },
+    { x: 14, y: 28, bx: 26, by: 38, anchor: 'side' },
+    { x: 36, y: 18, bx: 42, by: 37, anchor: 'top'  },
+    { x: 64, y: 18, bx: 58, by: 37, anchor: 'top'  },
+    { x: 86, y: 28, bx: 74, by: 38, anchor: 'side' },
+    { x: 87, y: 55, bx: 75, by: 53, anchor: 'side' },
+    { x: 75, y: 75, bx: 66, by: 68, anchor: 'side' },
+  ],
+  10: [
+    { x: 50, y: 78, bx: 50, by: 70, anchor: 'side' },
+    { x: 26, y: 75, bx: 34, by: 68, anchor: 'side' },
+    { x: 12, y: 56, bx: 24, by: 54, anchor: 'side' },
+    { x: 12, y: 32, bx: 24, by: 38, anchor: 'side' },
+    { x: 28, y: 19, bx: 36, by: 37, anchor: 'top'  },
+    { x: 50, y: 17, bx: 50, by: 36, anchor: 'top'  },
+    { x: 72, y: 19, bx: 64, by: 37, anchor: 'top'  },
+    { x: 88, y: 32, bx: 76, by: 38, anchor: 'side' },
+    { x: 88, y: 56, bx: 76, by: 54, anchor: 'side' },
+    { x: 74, y: 75, bx: 66, by: 68, anchor: 'side' },
+  ],
 }
 
-// Top-edge seats get the speech bubble flipped to below the portrait so it doesn't
-// fly off the table. Side and bottom seats keep the default above-portrait bubble.
+function getSeat(index, total) {
+  const layout = LAYOUTS[total] ?? LAYOUTS[10]
+  return layout[index] ?? layout[layout.length - 1]
+}
+
+function seatPos(index, total) {
+  const s = getSeat(index, total)
+  return { x: s.x, y: s.y }
+}
+
 function seatAnchor(index, total) {
-  const { y } = seatPos(index, total)
-  return y < 22 ? 'top' : 'side'
+  return getSeat(index, total).anchor
 }
 
 function seatStyle(index, total) {
-  const { x, y } = seatPos(index, total)
+  const s = getSeat(index, total)
   return {
-    left: `${x}%`,
-    top: `${y}%`,
+    left: `${s.x}%`,
+    top: `${s.y}%`,
     transform: 'translate(-50%, -50%)',
   }
 }
 
-// Bet chips sit between each seat and the table centre (along the radial),
-// so each player has their committed chips visible in front of them.
-const BET_RADIAL_OFFSET = 0.42 // 0 = at seat, 1 = at centre
 function betStyle(index, total) {
-  const { x, y } = seatPos(index, total)
-  const cx = 50, cy = 50
+  const s = getSeat(index, total)
   return {
-    left: `${x + (cx - x) * BET_RADIAL_OFFSET}%`,
-    top: `${y + (cy - y) * BET_RADIAL_OFFSET}%`,
+    left: `${s.bx}%`,
+    top: `${s.by}%`,
     transform: 'translate(-50%, -50%)',
   }
 }
+
+// Uniform scaling: the inner table is laid out on a fixed 1900×950 canvas and
+// scaled with a single CSS transform so every child (portraits, cards, chips)
+// shrinks together instead of overflowing the felt on smaller viewports.
+const TABLE_W = 1900
+const TABLE_H = 950
+const tableHostRef = ref(null)
+const tableScale = ref(1)
+let tableResizeObserver = null
+function updateTableScale() {
+  if (!tableHostRef.value) return
+  const rect = tableHostRef.value.getBoundingClientRect()
+  if (!rect.width || !rect.height) return
+  tableScale.value = Math.min(rect.width / TABLE_W, rect.height / TABLE_H)
+}
+onMounted(() => {
+  updateTableScale()
+  tableResizeObserver = new ResizeObserver(updateTableScale)
+  tableResizeObserver.observe(tableHostRef.value)
+})
+onBeforeUnmount(() => {
+  tableResizeObserver?.disconnect()
+  tableResizeObserver = null
+})
 
 function denominationFor(amount) {
   if (amount >= 1000) return 'black'
@@ -215,10 +292,24 @@ const winnerSummary = computed(() => {
 <template>
   <div class="relative h-full w-full">
     <!-- Table chrome: mahogany rail → brass outer rim → brass inner rim → felt.
-         Wider aspect (2:1) + larger max-w give 10-player tables enough horizontal room
-         for portraits, hole cards, chip stacks, and speech bubbles without crowding.
-         max-h caps the table so it still fits a typical 1080p viewport. -->
-    <div class="relative mx-auto aspect-[2/1] w-full max-w-[1900px] max-h-[920px]">
+         Outer host: an aspect-ratio box that fits the available width. The inner canvas
+         is a fixed 1900×950 layout that we scale uniformly via CSS transform, so cards,
+         chips, portraits, and seat positions all shrink together as the viewport shrinks
+         instead of children overflowing the felt. -->
+    <div
+      ref="tableHostRef"
+      class="relative mx-auto w-full"
+      :style="{ aspectRatio: `${TABLE_W} / ${TABLE_H}`, maxWidth: `${TABLE_W}px`, maxHeight: `${TABLE_H}px` }"
+    >
+      <div
+        class="absolute top-0 left-1/2"
+        :style="{
+          width: `${TABLE_W}px`,
+          height: `${TABLE_H}px`,
+          transform: `translateX(-50%) scale(${tableScale})`,
+          transformOrigin: 'top center',
+        }"
+      >
       <!-- Mahogany rail (outer ring) — now a rounded rectangle so the corners become
            usable felt area and seats can be spaced along straight edges for less crowding. -->
       <div class="wood-rail absolute inset-0 rounded-[110px] shadow-rail">
@@ -351,6 +442,7 @@ const winnerSummary = computed(() => {
             </div>
           </div>
         </Transition>
+      </div>
       </div>
     </div>
 

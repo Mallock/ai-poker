@@ -9,8 +9,8 @@ The default model is now `gemma-4-26b-a4b-it-ultra-uncensored-heretic`, a non-re
 **Tournament setup** — pick your opponents, configure stacks and blind levels.
 ![Tournament setup screen with character roster and table configuration](docs/screenshots/01-setup.png)
 
-**Live hand** — six-handed table mid pre-flop. Dmitri (Russian oligarch, "pressure-driven aggressor") has just opened to 300; the Research Panel on the right shows his full `<think>` chain — position read, hand strength on 4c 5d, character-driven motivation, and the final structured reply `{"action": "raise", "amount": 300, "say": "I take what is mine."}` — streamed straight from the local model. Walter is the next AI to act (THINKING badge), and a fading speech bubble carries Dmitri's table talk while the hand log on the bottom-left tracks the action.
-![Live hand with streaming AI reasoning panel showing Dmitri's chain-of-thought and structured raise reply](docs/screenshots/02-play.png)
+**Live hand** — six-handed pre-flop. Seats sit along the long edges of a race-track felt, with each player's committed chips placed between their hole cards and the community area; multiple pots lay out horizontally so they never collide with the bottom-centre (human) seat. The Research Panel on the right streams the active AI's full `<think>` chain — position read, hand strength, character-driven motivation, and the final structured `{"action", "amount", "say"}` reply — straight from the local LM Studio model, while the **Memory** section above shows each character's running session notes (reads, grudges, tendencies) that get injected back into every subsequent turn's prompt.
+![Live hand with streaming AI reasoning panel and per-character session memory](docs/screenshots/02-play.png)
 
 ## Setup
 
