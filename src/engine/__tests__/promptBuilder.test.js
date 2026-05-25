@@ -1,0 +1,94 @@
+import { describe, it, expect } from 'vitest'
+import { parseActionJson, buildPrompt } from '../../ai/promptBuilder.js'
+
+describe('parseActionJson', () => {
+  it('parses a clean object', () => {
+    const got = parseActionJson('{"action":"raise","amount":300,"say":"bring it"}')
+    expect(got).toEqual({ action: 'raise', amount: 300, say: 'bring it' })
+  })
+
+  it('strips markdown fences', () => {
+    const got = parseActionJson('```json\n{"action":"check","amount":0,"say":null}\n```')
+    expect(got).toEqual({ action: 'check', amount: 0, say: null })
+  })
+
+  it('tolerates surrounding whitespace and chatter', () => {
+    const got = parseActionJson('Final answer:\n{"action":"fold","amount":0,"say":null}\n')
+    expect(got.action).toBe('fold')
+  })
+
+  it('coerces missing amount to 0', () => {
+    const got = parseActionJson('{"action":"all-in","say":null}')
+    expect(got.amount).toBe(0)
+  })
+
+  it('coerces non-string say to null', () => {
+    const got = parseActionJson('{"action":"check","amount":0,"say":42}')
+    expect(got.say).toBe(null)
+  })
+
+  it('rejects unknown action', () => {
+    expect(() => parseActionJson('{"action":"surrender","amount":0,"say":null}')).toThrow()
+  })
+
+  it('rejects malformed JSON', () => {
+    expect(() => parseActionJson('not json at all')).toThrow()
+  })
+})
+
+describe('buildPrompt', () => {
+  function makeView() {
+    return {
+      handNumber: 1, street: 'flop',
+      blinds: { smallBlind: 50, bigBlind: 100, ante: 0 },
+      dealerId: 'p0', toAct: 'p1',
+      communityCards: ['AS', 'KH', '7D'],
+      pots: [{ amount: 600, eligible: ['p0', 'p1', 'p2'] }],
+      potTotal: 600, currentBet: 0, minRaiseIncrement: 100,
+      actionHistory: [],
+      self: { id: 'p1', name: 'Me', seatIndex: 1, characterId: 'the-cowboy', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 200, folded: false, allIn: false, eliminated: false, holeCards: ['AH', 'AD'] },
+      opponents: [
+        { id: 'p0', name: 'Op0', seatIndex: 0, characterId: 'the-old-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 200, folded: false, allIn: false, eliminated: false },
+      ],
+      legalActions: { canFold: true, canCheck: true, canCall: false, callAmount: 0, canRaise: true, minRaise: 100, maxRaise: 1000, canAllIn: true, allInAmount: 1000 },
+    }
+  }
+
+  const character = { id: 'the-cowboy', name: 'The Cowboy', personality: 'p', playStyle: 's' }
+
+  it('does not include any other-player hole cards in serialized messages', () => {
+    const messages = buildPrompt({ view: makeView(), character })
+    const json = JSON.stringify(messages)
+    expect(json).toContain('AH') // own card
+    expect(json).toContain('AD') // own card
+    expect(json).not.toMatch(/"holeCards"\s*:/) // opponents shouldn't have any holeCards field
+  })
+
+  it('omits the TABLE MEMORY section entirely when memory is empty', () => {
+    const messages = buildPrompt({ view: makeView(), character, memory: '' })
+    const system = messages[0].content
+    expect(system).not.toContain('=== TABLE MEMORY ===')
+  })
+
+  it('inserts TABLE MEMORY between YOUR CHARACTER and OUTPUT FORMAT when present', () => {
+    const memory = '=== TABLE MEMORY ===\nLasting impressions: Reggie tilts loud.'
+    const messages = buildPrompt({ view: makeView(), character, memory })
+    const system = messages[0].content
+    const charIdx = system.indexOf('=== YOUR CHARACTER ===')
+    const memIdx = system.indexOf('=== TABLE MEMORY ===')
+    const outIdx = system.indexOf('=== OUTPUT FORMAT ===')
+    expect(charIdx).toBeGreaterThanOrEqual(0)
+    expect(memIdx).toBeGreaterThan(charIdx)
+    expect(outIdx).toBeGreaterThan(memIdx)
+    expect(system).toContain('Reggie tilts loud.')
+  })
+
+  it('only includes the requesting character\'s memory (never another character\'s)', () => {
+    const memoryA = '=== TABLE MEMORY ===\nLasting impressions: Wade is bluffy.'
+    const messages = buildPrompt({ view: makeView(), character, memory: memoryA })
+    const system = messages[0].content
+    expect(system).toContain('Wade is bluffy.')
+    // A separate character's memory string is never passed in this call, so it can't leak.
+    expect(system).not.toContain('Vera slow-plays')
+  })
+})
