@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { describeHandStrength } from '../handStrength.js'
+import { describeHandStrength, describePreflopHand } from '../handStrength.js'
 
 describe('describeHandStrength', () => {
   it('returns null preflop (fewer than 3 community cards)', () => {
@@ -64,5 +64,42 @@ describe('describeHandStrength', () => {
     const s = describeHandStrength(['9H', '8H'], ['7H', '6C', '2H'])
     expect(s.draws).toContain('open-ended straight draw (8 outs)')
     expect(s.draws).toContain('4-card flush draw (~9 outs to a flush)')
+  })
+})
+
+describe('describePreflopHand', () => {
+  it('marks QS TH as offsuit (the Vera misread)', () => {
+    const d = describePreflopHand(['QS', 'TH'])
+    expect(d).toMatch(/Q-T offsuit/)
+    expect(d).not.toMatch(/suited/)
+  })
+
+  it('marks suited cards as suited', () => {
+    const d = describePreflopHand(['QS', 'TS'])
+    expect(d).toMatch(/Q-T suited/)
+  })
+
+  it('marks pocket pairs explicitly', () => {
+    expect(describePreflopHand(['5H', '5D'])).toMatch(/5-5.*pocket fives.*small pair/i)
+    expect(describePreflopHand(['QH', 'QC'])).toMatch(/Q-Q.*pocket queens.*premium pair/i)
+  })
+
+  it('tags AKs/AKo as premium', () => {
+    expect(describePreflopHand(['AH', 'KH'])).toMatch(/A-K suited.*premium/)
+    expect(describePreflopHand(['AS', 'KD'])).toMatch(/A-K offsuit.*premium/)
+  })
+
+  it('tags weak Ax as dominated', () => {
+    expect(describePreflopHand(['AS', '2H'])).toMatch(/A-2 offsuit.*weak Ax.*dominated/)
+  })
+
+  it('tags suited connectors', () => {
+    expect(describePreflopHand(['7H', '6H'])).toMatch(/7-6 suited.*connectors/)
+  })
+
+  it('returns null on missing/invalid input', () => {
+    expect(describePreflopHand(null)).toBe(null)
+    expect(describePreflopHand([])).toBe(null)
+    expect(describePreflopHand(['AS'])).toBe(null)
   })
 })

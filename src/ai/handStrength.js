@@ -17,6 +17,62 @@ import { toSolverCard, parseCard, RANKS } from '../engine/cards.js'
 
 const RANK_VALUE = Object.fromEntries(RANKS.map((r, i) => [r, i + 2])) // 2..14
 
+const RANK_FULL = { '2': 'two', '3': 'three', '4': 'four', '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine', 'T': 'ten', 'J': 'jack', 'Q': 'queen', 'K': 'king', 'A': 'ace' }
+
+// One-line preflop description of two hole cards so the LLM stops misreading suited as
+// offsuit (and vice versa). Returns something like "Q-T offsuit (broadway, two-gapper)"
+// or "8-8 (pocket pair)" or "7h 6h — 7-6 suited (suited connector)".
+export function describePreflopHand(holeCards) {
+  if (!Array.isArray(holeCards) || holeCards.length < 2) return null
+  let a, b
+  try {
+    a = parseCard(holeCards[0])
+    b = parseCard(holeCards[1])
+  } catch {
+    return null
+  }
+  const high = RANK_VALUE[a.rank] >= RANK_VALUE[b.rank] ? a : b
+  const low = high === a ? b : a
+  const suited = a.suit === b.suit
+  const pair = a.rank === b.rank
+  const tags = []
+
+  if (pair) {
+    const v = RANK_VALUE[a.rank]
+    if (v >= 12) tags.push('premium pair')
+    else if (v >= 9) tags.push('big pair')
+    else if (v >= 6) tags.push('medium pair')
+    else tags.push('small pair (set-mining candidate)')
+    return `${a.rank}-${a.rank} (pocket ${RANK_FULL[a.rank]}s — ${tags.join(', ')})`
+  }
+
+  const gap = RANK_VALUE[high.rank] - RANK_VALUE[low.rank]
+  if (gap === 1) tags.push('connectors')
+  else if (gap === 2) tags.push('one-gapper')
+  else if (gap === 3) tags.push('two-gapper')
+
+  const hv = RANK_VALUE[high.rank]
+  if (high.rank === 'A') {
+    if (RANK_VALUE[low.rank] <= 9) tags.push('weak Ax — dominated by better aces')
+    else tags.push('strong Ax / broadway ace')
+  } else if (hv >= 11 && RANK_VALUE[low.rank] >= 10) {
+    tags.push('broadway')
+  } else if (hv <= 9 && gap <= 1) {
+    tags.push('low connectors')
+  } else if (hv >= 10 && RANK_VALUE[low.rank] >= 7 && gap === 1) {
+    tags.push('mid-high connectors')
+  }
+
+  // Premium label only if it's literally one of the top hands.
+  const code = high.rank + low.rank + (suited ? 's' : 'o')
+  if (['AKs', 'AKo', 'AQs'].includes(code)) tags.push('premium')
+
+  const suitedLabel = suited ? 'suited' : 'offsuit'
+  const cardLabel = `${high.rank}-${low.rank} ${suitedLabel}`
+  const tagText = tags.length ? ` — ${tags.join(', ')}` : ''
+  return `${cardLabel}${tagText}`
+}
+
 export function describeHandStrength(holeCards, communityCards) {
   if (!Array.isArray(holeCards) || !Array.isArray(communityCards)) return null
   if (holeCards.length < 2) return null

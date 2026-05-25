@@ -1,5 +1,5 @@
 import { chattinessDescriptor } from './characters.js'
-import { describeHandStrength } from './handStrength.js'
+import { describeHandStrength, describePreflopHand } from './handStrength.js'
 
 // Build the chat-completion messages array for one AI turn.
 // Inputs:
@@ -325,25 +325,40 @@ function buildUserMessage(view, handHistoryNote) {
   const strengthLines = []
   if (strength?.made) {
     strengthLines.push(`Your current made hand (computed for you — TRUST this, do not re-derive): ${strength.made.descr} [${strength.made.name}].`)
+  } else {
+    // Preflop: surface a one-line hand-type read so the model doesn't misread suited vs offsuit.
+    const preflop = describePreflopHand(view.self.holeCards)
+    if (preflop) strengthLines.push(`Hand type (computed for you — TRUST this, do not re-derive): ${preflop}.`)
   }
   if (strength?.draws?.length) {
     strengthLines.push(`Active draws using your hole cards: ${strength.draws.join(', ')}.`)
   }
   const strengthBlock = strengthLines.length ? '\n' + strengthLines.join('\n') : ''
 
-  // Last few chat lines anyone heard. Mark the seat's own lines as "You (Name)" so the
-  // model can see what it has already said and avoid repeating itself.
-  const recentChat = (view.tableChat ?? []).slice(-12)
-  const chatBlock = recentChat.length === 0
-    ? ''
-    : `\n=== TABLE CHAT (recent — everyone at the table heard these) ===\n${
-        recentChat.map((c) => {
-          const who = c.playerId === view.self.id ? `You (${view.self.name})` : c.name
-          const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
-          const street = c.street ?? ''
-          return `  - [${hand} ${street}] ${who}: ${c.text}`
-        }).join('\n')
-      }\n`
+  // Chat is split into two blocks:
+  //   1. Lines YOU have already said — prominent "do not repeat" warning. Pull the speaker's
+  //      OWN last 6 lines from the full chat log (not just the recent window), so callbacks
+  //      to lines from many hands ago still get suppressed.
+  //   2. Lines OTHERS have said recently — last ~12 entries from the rolling window.
+  // This is the single biggest fix for the "Vera said 'Hungry, Clyde?' twice" failure mode.
+  const allChat = view.tableChat ?? []
+  const ownChat = allChat.filter((c) => c.playerId === view.self.id).slice(-6)
+  const otherChat = allChat.filter((c) => c.playerId !== view.self.id).slice(-12)
+
+  const ownBlock = ownChat.length === 0 ? '' : `\n=== LINES YOU HAVE ALREADY SAID (DO NOT REPEAT OR PARAPHRASE) ===
+These are things YOU said earlier this session. Do not say any of them again. Do not paraphrase them. Do not reuse their sentence structure. If you can't think of a fresh line, set "say": null.
+${ownChat.map((c) => {
+  const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
+  return `  - [${hand} ${c.street ?? ''}] "${c.text}"`
+}).join('\n')}\n`
+
+  const othersBlock = otherChat.length === 0 ? '' : `\n=== RECENT TABLE CHAT (lines from OTHER players — everyone at the table heard these) ===
+${otherChat.map((c) => {
+  const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
+  return `  - [${hand} ${c.street ?? ''}] ${c.name}: ${c.text}`
+}).join('\n')}\n`
+
+  const chatBlock = ownBlock + othersBlock
 
   return `
 === TABLE STATE ===

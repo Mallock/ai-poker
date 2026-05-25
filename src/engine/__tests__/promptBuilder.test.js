@@ -92,23 +92,36 @@ describe('buildPrompt', () => {
     expect(system).not.toContain('Vera slow-plays')
   })
 
-  it('omits TABLE CHAT section when chat log is empty', () => {
+  it('omits chat blocks entirely when log is empty', () => {
     const messages = buildPrompt({ view: makeView(), character })
     const user = messages[1].content
-    expect(user).not.toContain('=== TABLE CHAT')
+    expect(user).not.toContain('LINES YOU HAVE ALREADY SAID')
+    expect(user).not.toContain('RECENT TABLE CHAT')
   })
 
-  it('renders TABLE CHAT with opponent names and own lines marked "You (...)"', () => {
+  it('separates own lines (prominent DO NOT REPEAT block) from others lines', () => {
     const view = makeView()
     view.tableChat = [
       { handNumber: 1, street: 'preflop', playerId: 'p0', name: 'Op0', characterId: 'the-old-pro', text: 'Your bet.' },
-      { handNumber: 1, street: 'flop', playerId: 'p1', name: 'Me', characterId: 'the-cowboy', text: 'Reckon I will see it.' },
+      { handNumber: 1, street: 'flop', playerId: 'p1', name: 'Me', characterId: 'the-cowboy', text: 'Hungry, partner?' },
     ]
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    expect(user).toContain('=== TABLE CHAT')
-    expect(user).toContain('Op0: Your bet.')
-    expect(user).toContain('You (Me): Reckon I will see it.')
+
+    const ownIdx = user.indexOf('LINES YOU HAVE ALREADY SAID')
+    const othersIdx = user.indexOf('RECENT TABLE CHAT')
+    expect(ownIdx).toBeGreaterThanOrEqual(0)
+    expect(othersIdx).toBeGreaterThan(ownIdx)
+
+    // Self's line "Hungry, partner?" lives in the OWN block (between ownIdx and othersIdx).
+    const ownBlock = user.slice(ownIdx, othersIdx)
+    expect(ownBlock).toContain('Hungry, partner?')
+    expect(ownBlock).not.toContain('Your bet.')
+
+    // Other player's line "Your bet." lives in the OTHERS block (after othersIdx).
+    const othersBlock = user.slice(othersIdx)
+    expect(othersBlock).toContain('Op0: Your bet.')
+    expect(othersBlock).not.toContain('Hungry, partner?')
   })
 
   it('surfaces computed made hand + draws in YOUR HAND when postflop (the Kenji bug)', () => {
@@ -122,13 +135,35 @@ describe('buildPrompt', () => {
     expect(user).toMatch(/Your current made hand.*Three of a Kind/i)
   })
 
-  it('omits made hand line preflop (no community cards yet)', () => {
+  it('omits made hand line preflop (no community cards yet) but surfaces preflop hand type', () => {
     const view = makeView()
     view.communityCards = []
     view.street = 'preflop'
+    view.self.holeCards = ['QS', 'TH'] // offsuit — the Vera bug she misread as "suited"
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
     expect(user).not.toContain('Your current made hand')
+    expect(user).toMatch(/Hand type.*Q-T offsuit/)
+  })
+
+  it('labels QS QH as a pocket pair preflop', () => {
+    const view = makeView()
+    view.communityCards = []
+    view.street = 'preflop'
+    view.self.holeCards = ['QS', 'QH']
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/Hand type.*Q-Q.*pocket queens/i)
+  })
+
+  it('labels 7h 6h as suited connectors preflop', () => {
+    const view = makeView()
+    view.communityCards = []
+    view.street = 'preflop'
+    view.self.holeCards = ['7H', '6H']
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/Hand type.*7-6 suited.*connectors/i)
   })
 
   it('labels UTG/MP/HJ/CO at a 9-handed table (not just BTN/SB/BB)', () => {
@@ -170,7 +205,7 @@ describe('buildPrompt', () => {
     expect(user).toMatch(/Effective stack vs the smallest live opponent: ~10bb/)
   })
 
-  it('only includes the most recent 12 chat entries', () => {
+  it('caps OTHERS chat at the most recent 12 entries', () => {
     const view = makeView()
     view.tableChat = Array.from({ length: 20 }, (_, i) => ({
       handNumber: 1, street: 'preflop', playerId: 'p0', name: 'Op0', characterId: 'the-old-pro',
@@ -181,5 +216,18 @@ describe('buildPrompt', () => {
     expect(user).not.toContain('line 7') // dropped
     expect(user).toContain('line 8')     // 12th from the end
     expect(user).toContain('line 19')    // most recent
+  })
+
+  it('caps OWN-lines block at the most recent 6 entries', () => {
+    const view = makeView()
+    view.tableChat = Array.from({ length: 10 }, (_, i) => ({
+      handNumber: 1, street: 'preflop', playerId: 'p1', name: 'Me', characterId: 'the-cowboy',
+      text: `mine ${i}`,
+    }))
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).not.toContain('mine 3') // dropped (only last 6 kept: 4..9)
+    expect(user).toContain('mine 4')
+    expect(user).toContain('mine 9')
   })
 })
