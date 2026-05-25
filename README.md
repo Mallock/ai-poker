@@ -4,6 +4,14 @@ A single-player Texas Hold'em SPA played against AI characters whose **live reas
 
 The default model is now `gemma-4-26b-a4b-it-ultra-uncensored-heretic`, a non-reasoning instruction-tuned model that still happily emits inline `<think>…</think>` reasoning when prompted, so the reasoning panel keeps working. To switch models, edit `EXPECTED_MODEL` in [`src/ai/lmStudio.js`](src/ai/lmStudio.js).
 
+## Screenshots
+
+**Tournament setup** — pick your opponents, configure stacks and blind levels.
+![Tournament setup screen with character roster and table configuration](docs/screenshots/01-setup.png)
+
+**Live hand** — six-handed table mid pre-flop. Dmitri (Russian oligarch, "pressure-driven aggressor") has just opened to 300; the Research Panel on the right shows his full `<think>` chain — position read, hand strength on 4c 5d, character-driven motivation, and the final structured reply `{"action": "raise", "amount": 300, "say": "I take what is mine."}` — streamed straight from the local model. Walter is the next AI to act (THINKING badge), and a fading speech bubble carries Dmitri's table talk while the hand log on the bottom-left tracks the action.
+![Live hand with streaming AI reasoning panel showing Dmitri's chain-of-thought and structured raise reply](docs/screenshots/02-play.png)
+
 ## Setup
 
 ### 1. Dependencies
