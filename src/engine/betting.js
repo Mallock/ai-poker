@@ -2,6 +2,10 @@ import { currentBlinds } from './blindSchedule.js'
 import { nextActiveIndex } from './state.js'
 import { advanceStreetIfReady } from './streets.js'
 
+// Cap the cross-hand chat log so it doesn't grow unboundedly. The AI prompt only ever
+// reads the tail anyway; this just keeps state size sane over a long tournament.
+export const MAX_TABLE_CHAT = 60
+
 function findPlayer(state, playerId) {
   const p = state.players.find((x) => x.id === playerId)
   if (!p) throw new Error(`Unknown player: ${playerId}`)
@@ -142,8 +146,27 @@ export function applyAction(state, playerId, actionObj) {
   }
 
   p.hasActedThisStreet = true
+  recordTableChat(state, p, actionObj.say)
   advanceTurnOrStreet(state)
   return state
+}
+
+function recordTableChat(state, player, raw) {
+  if (typeof raw !== 'string') return
+  const text = raw.trim()
+  if (!text) return
+  if (!Array.isArray(state.tableChat)) state.tableChat = []
+  state.tableChat.push({
+    handNumber: state.handNumber,
+    street: state.street,
+    playerId: player.id,
+    name: player.name,
+    characterId: player.characterId ?? null,
+    text,
+  })
+  if (state.tableChat.length > MAX_TABLE_CHAT) {
+    state.tableChat.splice(0, state.tableChat.length - MAX_TABLE_CHAT)
+  }
 }
 
 function recordAction(state, player, action, amount) {

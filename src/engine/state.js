@@ -43,6 +43,11 @@ export function createInitialState({
     lastRaiseSize: 0,
     toAct: null,
     actionHistory: [],
+    // Rolling table chat log across the session. Every action with a non-empty `say`
+    // appends an entry here. Kept bounded (see MAX_TABLE_CHAT in betting.js) so it
+    // doesn't grow unboundedly over a long tournament. Cross-hand on purpose — rivalries
+    // and running jokes should outlive a single hand.
+    tableChat: [],
     players,
   }
 }

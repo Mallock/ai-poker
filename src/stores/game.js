@@ -301,30 +301,32 @@ export const useGameStore = defineStore('game', {
 
 function coerceLegal(state, playerId, decision) {
   const la = legalActions(state, playerId)
+  const say = typeof decision?.say === 'string' ? decision.say : null
+  const withSay = (obj) => (say ? { ...obj, say } : obj)
   switch (decision.action) {
     case 'fold':
-      return la.canFold ? { action: 'fold', amount: 0 } : { action: 'check', amount: 0 }
+      return withSay(la.canFold ? { action: 'fold', amount: 0 } : { action: 'check', amount: 0 })
     case 'check':
-      return la.canCheck ? { action: 'check', amount: 0 } : { action: 'fold', amount: 0 }
+      return withSay(la.canCheck ? { action: 'check', amount: 0 } : { action: 'fold', amount: 0 })
     case 'call':
-      if (la.canCall) return { action: 'call', amount: la.callAmount }
-      if (la.canCheck) return { action: 'check', amount: 0 }
-      return { action: 'fold', amount: 0 }
+      if (la.canCall) return withSay({ action: 'call', amount: la.callAmount })
+      if (la.canCheck) return withSay({ action: 'check', amount: 0 })
+      return withSay({ action: 'fold', amount: 0 })
     case 'raise': {
       if (!la.canRaise) {
-        if (la.canCall) return { action: 'call', amount: la.callAmount }
-        if (la.canCheck) return { action: 'check', amount: 0 }
-        return { action: 'fold', amount: 0 }
+        if (la.canCall) return withSay({ action: 'call', amount: la.callAmount })
+        if (la.canCheck) return withSay({ action: 'check', amount: 0 })
+        return withSay({ action: 'fold', amount: 0 })
       }
       const amt = Math.max(la.minRaise, Math.min(la.maxRaise, decision.amount || la.minRaise))
-      return { action: 'raise', amount: amt }
+      return withSay({ action: 'raise', amount: amt })
     }
     case 'all-in':
-      if (la.canAllIn) return { action: 'all-in', amount: la.allInAmount }
-      if (la.canCall) return { action: 'call', amount: la.callAmount }
-      if (la.canCheck) return { action: 'check', amount: 0 }
-      return { action: 'fold', amount: 0 }
+      if (la.canAllIn) return withSay({ action: 'all-in', amount: la.allInAmount })
+      if (la.canCall) return withSay({ action: 'call', amount: la.callAmount })
+      if (la.canCheck) return withSay({ action: 'check', amount: 0 })
+      return withSay({ action: 'fold', amount: 0 })
     default:
-      return { action: 'fold', amount: 0 }
+      return withSay({ action: 'fold', amount: 0 })
   }
 }

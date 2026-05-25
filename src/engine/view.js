@@ -62,6 +62,11 @@ export function getPlayerView(state, playerId) {
       holeCards: [...self.holeCards],
     },
     opponents,
+    // Public table chat. All players hear everything anyone says aloud, so this is shared
+    // verbatim (no redaction). Deep-cloned to keep the view immutable.
+    tableChat: Array.isArray(state.tableChat)
+      ? state.tableChat.map((c) => ({ ...c }))
+      : [],
     legalActions: legalActions(state, playerId),
   }
   return view

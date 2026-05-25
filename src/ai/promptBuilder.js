@@ -108,9 +108,26 @@ You will be given a private view of the current poker situation. Decide ONE acti
 - After </think> (or with no <think> block at all), output EXACTLY one JSON object — nothing else, no markdown fences, no commentary:
   {"action": "<one of: fold, check, call, raise, all-in>", "amount": <number>, "say": <string or null>}
 - "amount" for "raise" is the total amount you are raising TO (not the additional chips). For "call" and "all-in" the engine fills in the amount; you may set it to 0.
-- "say" is optional table talk. Once your action is decided: if your chattiness and mood suggest speaking, write the FIRST short line in your character's voice that comes to mind and move on. Otherwise set "say": null. Never the bottleneck of your turn. Under 100 characters.
-- Stay in character at all times in "say". Do NOT mention that you are an AI. Do NOT narrate your own tells out loud.
-- Only choose an action from the legalActions set provided in the input.`)
+- Only choose an action from the legalActions set provided in the input.
+
+=== TABLE TALK ("say" field) ===
+
+The table is a live chat room. The TABLE CHAT block (when present) is everything any player has said out loud recently — every other player at the table hears you when you speak, and you have heard everything they said. Treat it like a real conversation.
+
+Use "say" to make this a conversation, not a stream of catchphrases. Default to null on most turns (especially routine folds and silent characters). When you do speak, pick ONE of these modes:
+
+1. **React to a specific line.** If someone in TABLE CHAT just said something at you, about you, or about the hand, answer them by name. ("Don't bait me, Dmitri." / "That story again, Reggie?") This is the most interesting kind of talk and the easiest way to keep things from feeling like bots talking to themselves.
+2. **Comment on the situation** in a way that fits THIS spot — the specific board, sizing, opponent, history. Generic lines that could fit any hand ("Your bet.", "Call.") read as filler.
+3. **Express genuine emotion** — a sigh, a small laugh, a mutter, a needle. Real reactions are interesting; canned reactions are not.
+4. **Stay silent** ("say": null). Silence is a valid move and often the right one for quiet characters or routine actions.
+
+HARD RULES:
+- **Never reveal your hand or your read.** Do not say "I have top pair", "I'm on a draw", "I have you beat", "I have nothing", "I'm bluffing", "I have the nuts", "I'm pot committed", or anything else that puts your actual hole cards, equity, or strategy on the table. Frustration, surprise, and emotion are fine; specifics are not. A pro never tells you what they have, and neither do you.
+- **Do not narrate your own tells.** If your tells say "talks more when bluffing," don't *say* "I'm bluffing." Just talk more, naturally.
+- **Do not repeat yourself.** If you (or anyone else) said something in TABLE CHAT recently, do not reuse that line, phrase, or sentence structure. Same goes for your own catchphrases — they are TONE SAMPLES showing your voice, NOT a menu to pick from. Vary your wording every time. If you can't think of a fresh line, set "say": null.
+- **Catchphrases are voice samples, not lines you must use.** Borrow rhythm, vocabulary, and attitude. Do not echo the literal text.
+- Stay in character. Never mention you are an AI, an LLM, a model, a prompt, a system, or anything outside the fiction of the poker table.
+- Under 100 characters. One short line. Never the bottleneck of your turn — if a fresh line doesn't come immediately, set "say": null and move on.`)
   return lines.join('\n\n')
 }
 
@@ -210,6 +227,20 @@ function buildUserMessage(view, handHistoryNote) {
     : 'Dealer button: (unknown)'
   const selfPos = positions[view.self.id] ? ` — position ${positions[view.self.id]}` : ''
 
+  // Last few chat lines anyone heard. Mark the seat's own lines as "You (Name)" so the
+  // model can see what it has already said and avoid repeating itself.
+  const recentChat = (view.tableChat ?? []).slice(-12)
+  const chatBlock = recentChat.length === 0
+    ? ''
+    : `\n=== TABLE CHAT (recent — everyone at the table heard these) ===\n${
+        recentChat.map((c) => {
+          const who = c.playerId === view.self.id ? `You (${view.self.name})` : c.name
+          const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
+          const street = c.street ?? ''
+          return `  - [${hand} ${street}] ${who}: ${c.text}`
+        }).join('\n')
+      }\n`
+
   return `
 === TABLE STATE ===
 Hand #${view.handNumber}, street: ${view.street}
@@ -231,7 +262,7 @@ ${oppLines}
 
 === ACTION HISTORY (this hand) ===
 ${historyLines}
-
+${chatBlock}
 === YOUR LEGAL ACTIONS ===
 ${legalSummary}
 

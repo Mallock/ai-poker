@@ -91,4 +91,36 @@ describe('buildPrompt', () => {
     // A separate character's memory string is never passed in this call, so it can't leak.
     expect(system).not.toContain('Vera slow-plays')
   })
+
+  it('omits TABLE CHAT section when chat log is empty', () => {
+    const messages = buildPrompt({ view: makeView(), character })
+    const user = messages[1].content
+    expect(user).not.toContain('=== TABLE CHAT')
+  })
+
+  it('renders TABLE CHAT with opponent names and own lines marked "You (...)"', () => {
+    const view = makeView()
+    view.tableChat = [
+      { handNumber: 1, street: 'preflop', playerId: 'p0', name: 'Op0', characterId: 'the-old-pro', text: 'Your bet.' },
+      { handNumber: 1, street: 'flop', playerId: 'p1', name: 'Me', characterId: 'the-cowboy', text: 'Reckon I will see it.' },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toContain('=== TABLE CHAT')
+    expect(user).toContain('Op0: Your bet.')
+    expect(user).toContain('You (Me): Reckon I will see it.')
+  })
+
+  it('only includes the most recent 12 chat entries', () => {
+    const view = makeView()
+    view.tableChat = Array.from({ length: 20 }, (_, i) => ({
+      handNumber: 1, street: 'preflop', playerId: 'p0', name: 'Op0', characterId: 'the-old-pro',
+      text: `line ${i}`,
+    }))
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).not.toContain('line 7') // dropped
+    expect(user).toContain('line 8')     // 12th from the end
+    expect(user).toContain('line 19')    // most recent
+  })
 })

@@ -59,6 +59,24 @@ describe('applyAction', () => {
     expect(() => applyAction(s, s.toAct, { action: 'check' })).toThrow()
   })
 
+  it('records a non-empty say into state.tableChat', () => {
+    const s = createInitialState({ seats: makeSeats(4), rngSeed: 1 })
+    startHand(s)
+    const utg = s.toAct
+    applyAction(s, utg, { action: 'fold', say: 'Not my hand.' })
+    expect(s.tableChat).toHaveLength(1)
+    expect(s.tableChat[0]).toMatchObject({ playerId: utg, text: 'Not my hand.', street: 'preflop' })
+  })
+
+  it('ignores missing or blank say (no chat entry)', () => {
+    const s = createInitialState({ seats: makeSeats(4), rngSeed: 1 })
+    startHand(s)
+    applyAction(s, s.toAct, { action: 'fold' })
+    applyAction(s, s.toAct, { action: 'fold', say: '   ' })
+    applyAction(s, s.toAct, { action: 'fold', say: null })
+    expect(s.tableChat).toHaveLength(0)
+  })
+
   it('fold-around wins the pot uncontested', () => {
     const s = createInitialState({ seats: makeSeats(4), rngSeed: 1 })
     startHand(s)

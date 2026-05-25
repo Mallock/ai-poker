@@ -34,6 +34,22 @@ describe('getPlayerView', () => {
     expect(Object.prototype.hasOwnProperty.call(folded, 'holeCards')).toBe(false)
   })
 
+  it('exposes tableChat to every player (public information)', () => {
+    const s = createInitialState({ seats: makeSeats(4), rngSeed: 1 })
+    startHand(s)
+    s.tableChat.push({ handNumber: 1, street: 'preflop', playerId: 'p1', name: 'P1', characterId: null, text: 'Boring.' })
+    const view = getPlayerView(s, 'p2')
+    expect(view.tableChat).toHaveLength(1)
+    expect(view.tableChat[0].text).toBe('Boring.')
+  })
+
+  it('returns an empty array when no chat has happened', () => {
+    const s = createInitialState({ seats: makeSeats(4), rngSeed: 1 })
+    startHand(s)
+    const view = getPlayerView(s, 'p2')
+    expect(view.tableChat).toEqual([])
+  })
+
   it('mutating the view does not affect engine state', () => {
     const s = createInitialState({ seats: makeSeats(4), rngSeed: 1 })
     startHand(s)
