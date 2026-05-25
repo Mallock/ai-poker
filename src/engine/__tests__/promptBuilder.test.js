@@ -111,6 +111,45 @@ describe('buildPrompt', () => {
     expect(user).toContain('You (Me): Reckon I will see it.')
   })
 
+  it('labels UTG/MP/HJ/CO at a 9-handed table (not just BTN/SB/BB)', () => {
+    // Build a 9-seat view, dealer at seat 0. Expected positions walking forward from BTN:
+    //   0: BTN, 1: SB, 2: BB, 3: UTG, 4: UTG+1, 5: MP, 6: MP+1, 7: HJ, 8: CO
+    const self = { id: 'p5', name: 'Me', seatIndex: 5, characterId: 'the-cowboy', isHuman: false, stack: 10000, currentBet: 0, totalContributed: 0, folded: false, allIn: false, eliminated: false, holeCards: ['AS', '2H'] }
+    const opponents = [0, 1, 2, 3, 4, 6, 7, 8].map((i) => ({
+      id: `p${i}`, name: `Op${i}`, seatIndex: i, characterId: null, isHuman: false,
+      stack: 10000, currentBet: 0, totalContributed: 0,
+      folded: false, allIn: false, eliminated: false,
+    }))
+    const view = {
+      handNumber: 1, street: 'preflop',
+      blinds: { smallBlind: 50, bigBlind: 100, ante: 0 },
+      dealerId: 'p0', toAct: 'p5',
+      communityCards: [], pots: [], potTotal: 150, currentBet: 100, minRaiseIncrement: 100,
+      actionHistory: [], self, opponents,
+      legalActions: { canFold: true, canCheck: false, canCall: true, callAmount: 100, canRaise: true, minRaise: 200, maxRaise: 10000, canAllIn: true, allInAmount: 10000 },
+    }
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    // Seat 0 is BTN, seat 5 is self → expect MP
+    expect(user).toContain('Op0 (seat 0) [BTN]')
+    expect(user).toContain('Op1 (seat 1) [SB]')
+    expect(user).toContain('Op2 (seat 2) [BB]')
+    expect(user).toContain('Op3 (seat 3) [UTG]')
+    expect(user).toContain('Op4 (seat 4) [UTG+1]')
+    expect(user).toContain('Op6 (seat 6) [MP+1]')
+    expect(user).toContain('Op7 (seat 7) [HJ]')
+    expect(user).toContain('Op8 (seat 8) [CO]')
+    expect(user).toContain('position MP')
+  })
+
+  it('reports effective stack in big blinds in the YOUR HAND section', () => {
+    const view = makeView()
+    // self.stack = 1000, opponent stack = 1000, BB=100 → effective ~10bb
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/Effective stack vs the smallest live opponent: ~10bb/)
+  })
+
   it('only includes the most recent 12 chat entries', () => {
     const view = makeView()
     view.tableChat = Array.from({ length: 20 }, (_, i) => ({

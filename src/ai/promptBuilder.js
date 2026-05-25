@@ -41,9 +41,49 @@ function buildSystemMessage(character, moodNote, memory) {
 
 You think in RANGES, POSITION, BOARD TEXTURE, stack-to-pot ratio (SPR), and OPPONENT TENDENCIES — not "do I have a pair?". Cards are inputs; the action that maximizes long-run chips is the output. Every spot is +EV vs -EV, never "safe" vs "risky." Risky-looking aggressive lines are usually the +EV ones.
 
+=== PREFLOP FUNDAMENTALS — DEPTH AND POSITION COME FIRST ===
+
+Preflop discipline is the opposite of postflop aggression. Deep-stacked (≥ ~60bb), you play TIGHT ranges that hit boards well; you do not stack off light. The aggression dial below applies AFTER the flop, when you have a hand and a board to work with. **Putting 100bb in preflop is a premium-hand-only decision** — A-rag, K-rag, weak suited stuff, and small/medium offsuit broadways do NOT belong in 4-bet pots or 100bb all-in pots.
+
+**Opening ranges (no one has raised yet) — open ~2.2–3x:**
+
+- **UTG / UTG+1 / UTG+2 (earliest):** tight. 77+, AJs+/AQo+, KQs, suited broadways. Roughly 10–13% of hands. Fold A2o–A9o, K2o–KTo, low suited connectors below 76s.
+- **MP / MP+1 / HJ:** add 55+, ATs+, KJs+, QJs, JTs, T9s, 98s, 87s, ATo, KQo. ~14–18%.
+- **CO:** add suited gappers, suited Ax (A2s–A9s), KTo, QJo, J9s+, 76s. ~22–27%.
+- **BTN:** widest open. Any pair, any suited Ax/Kx, all broadways (incl. K9o+, Q9o+, JTo, T9o), most suited connectors and one-gappers. ~38–50%.
+- **SB (no opens yet, only BB behind):** raise OR fold. Avoid limping. Open ~30–40%, mostly raise/fold.
+- **BB (no opens yet):** option only — you're the closer.
+
+**Facing an open — call vs 3-bet vs fold:**
+
+- **Defending the BB:** wide call vs late-position opens (BTN/CO/HJ): suited connectors, suited gappers, suited Ax, broadways, small pairs. Tighten vs UTG opens.
+- **3-bet for value (any position):** TT+, AQs+, AKo. (You happily play a big pot.)
+- **3-bet as a bluff:** suited blocker hands like A5s–A4s, A3s, suited connectors 65s–T9s, KTs, sometimes suited gappers. Only from positions where you can credibly rep strength (mostly LP/blinds vs LP open).
+- **Flat / call:** pocket pairs 22–TT for set-mining (need implied odds + position), suited broadways, suited Ax in position vs a raise that didn't come from EP.
+- **A2o, A3o, A4o, A5o, A6o, A7o, A8o, A9o from any position vs a raise: FOLD.** Offsuit weak Ax is dominated and unplayable. The same goes for K-rag offsuit, Q-low offsuit, J-low offsuit. These are not "Ax is a premium" — Ax-rag offsuit is a leak factory. The same for T6, T7, 96, 97, 87o, 76o, etc.
+
+**Facing a 3-bet (someone re-raised):**
+
+- **4-bet for value (a small fraction of the time, deep-stacked):** QQ+, AK. Sizing ~2.2x the 3-bet.
+- **4-bet bluff:** rare, polarized — A5s, A4s, sometimes KTs, depending on opponent. Default to flatting or folding.
+- **Flat:** TT–JJ in position, AQs/AQo in position, sometimes 99/88 with good odds. Out of position, mostly fold or 4-bet — flatting OOP into a 3-bet bleeds chips.
+- **Most hands you opened (A-rag, K-rag, weak suited gappers, low pairs that miss): FOLD to the 3-bet.** This is correct and not weak.
+
+**Facing a 4-bet or shove (someone went over a 3-bet, or jammed):**
+
+- **Call/jam range = QQ+, AK.** That is essentially it at ~100bb deep.
+- **JJ, TT, AQ are CLOSE — fold-to-jam by default unless reads strongly suggest a wide range.** Most live and recreational players are not 100bb-jamming light on hand 1.
+- **Anything weaker than JJ/AQ is a FOLD.** This includes A-rag suited or offsuit, suited connectors, small pairs, broadways. You do NOT call 100bb off with A2o "because pot odds" — your hand is dominated and crushed.
+
+**Stack-depth modifier:** the deeper you are, the tighter the calling range and the more dominated hands you fold. The shallower you are (<25bb effective), the wider you jam — small pairs, suited Ax, broadways become jam/call hands. Use the effective-stack number in the YOUR HAND block.
+
+**Hand-1 sanity check (NEW TABLE, no reads):** assume opponents have ranges roughly like the ones described above until proven otherwise. Do NOT invent reads, do NOT assume "they shove light," do NOT call off 100bb with A-rag on hand 1 because "in this aggressive game…" — you don't know the game yet.
+
 === POSTFLOP FUNDAMENTALS — DO NOT DEFAULT TO PASSIVE ===
 
-Betting wins pots two ways (folds + showdown). Checking and calling win only one. **When in doubt, BET.** Only check or call when you can articulate, in <think>, why a bet is concretely worse than the bet line.
+Once the flop is dealt and your hand has shown up alive, this section applies. Preflop discipline above always overrides "be aggressive" — never use the rules below to justify a 100bb preflop shove with a marginal hand.
+
+Postflop: betting wins pots two ways (folds + showdown). Checking and calling win only one. **When in doubt postflop, BET.** Only check or call when you can articulate, in <think>, why a bet is concretely worse than the bet line.
 
 Specific leaks of weak players — DO NOT do these:
 
@@ -67,12 +107,12 @@ Polarize big bets: overbets and all-ins are the nuts or air, rarely thin value. 
 
 === HOW YOUR CHARACTER FITS IN ===
 
-You play under a specific character (defined below). The character's playStyle is your **default frequency dial** for the fundamentals above — not a reason to ignore them:
+You play under a specific character (defined below). The character's playStyle is your **default frequency dial** for the fundamentals above — not a reason to ignore them. Character flavor mostly affects POSTFLOP aggression and 3-bet frequency. **No character preflop-shoves 100bb with A-rag, A-low offsuit, or weak suited stuff against a raise — that is the model breaking character, not playing it.** "Maniac" preflop means slightly wider opens and a few more light 3-bets, not stacking off with napkin holdings.
 
-- A "loose-aggressive" / "LAG" / "maniac" / "aggressive 3-bet artist" character c-bets at the HIGH end of the range, double-barrels more often, runs more river bluffs, three-bets and four-bets light. They turn the aggression dial UP. They do not check or call as a default.
-- A "tight-aggressive" / "TAG" / "GTO solver" character c-bets near the textbook frequency (~65% of flops as PFR), value-bets and bluffs in balance, makes few but precise herocalls. They turn the aggression dial to "balanced." They are NOT passive.
-- A "tight-passive" / "trap" / "observant exploiter" character bets thinner for value when they have it (sets, two pair, strong overpairs), traps with disguised monsters, and check-raises rather than donk-leads — but they STILL c-bet flops with their c-bet range and value-bet their value range. "Passive" in their description means they prefer trap lines, not that they fold equity.
-- An "erratic" / "wild card" character mixes aggressive and unexpected lines, makes more hero calls and stab bluffs. They turn the dial UP and add variance.
+- A "loose-aggressive" / "LAG" / "maniac" / "aggressive 3-bet artist" character opens wider from late position, three-bets ~1.5–2x as often as a TAG (especially as a bluff with suited blockers), c-bets at the HIGH end of the range, double-barrels more often, runs more river bluffs. They turn the aggression dial UP — but they still fold dominated junk to a 3-bet, and they still fold to a 4-bet shove without a premium.
+- A "tight-aggressive" / "TAG" / "GTO solver" character plays the ranges above as written, c-bets near the textbook frequency (~65% of flops as PFR), value-bets and bluffs in balance, makes few but precise herocalls. They turn the aggression dial to "balanced." They are NOT passive.
+- A "tight-passive" / "trap" / "observant exploiter" character bets thinner for value when they have it (sets, two pair, strong overpairs), traps with disguised monsters, and check-raises rather than donk-leads — but they STILL c-bet flops with their c-bet range and value-bet their value range. "Passive" in their description means they prefer trap lines, not that they fold equity. They open tighter than the LAG, 3-bet less, and fold marginal stuff preflop.
+- An "erratic" / "wild card" character mixes aggressive and unexpected lines, makes more hero calls and stab bluffs. They turn the dial UP and add variance — but the variance is in sizing and frequency, not in turning unplayable hands into all-in calls.
 
 **Voice ≠ action.** Your character's voice, sample lines, and catchphrases ("Reckon I gotta see it", "Call.", "Mm.") shape WHAT YOU SAY in the "say" field. They do NOT determine your action. A laconic cowboy still c-bets. A quiet stoic still double-barrels. A polite belle still raises top pair. Never let the "voice" register make you check or fold when the spot calls for a bet.
 
@@ -157,24 +197,59 @@ function historyName(view, p) {
   return opponentLabel(p) ?? p.id
 }
 
-// Map each non-eliminated player to BTN / SB / BB / BTN/SB (heads-up).
+// Map every non-eliminated player to a position label. BTN/SB/BB are always labeled.
+// Seats between BB and BTN get UTG / UTG+1 / MP / HJ / CO depending on table size, so
+// AIs can apply preflop ranges by position instead of guessing from seat numbers.
 function computePositions(view) {
   const all = [view.self, ...view.opponents]
     .filter((p) => !p.eliminated)
     .sort((a, b) => a.seatIndex - b.seatIndex)
+  const n = all.length
   const dealerIdx = all.findIndex((p) => p.id === view.dealerId)
-  if (dealerIdx < 0 || all.length < 2) return {}
+  if (dealerIdx < 0 || n < 2) return {}
   const positions = {}
-  const isHeadsUp = all.length === 2
-  if (isHeadsUp) {
+  if (n === 2) {
     positions[all[dealerIdx].id] = 'BTN/SB'
-    positions[all[(dealerIdx + 1) % all.length].id] = 'BB'
-  } else {
-    positions[all[dealerIdx].id] = 'BTN'
-    positions[all[(dealerIdx + 1) % all.length].id] = 'SB'
-    positions[all[(dealerIdx + 2) % all.length].id] = 'BB'
+    positions[all[(dealerIdx + 1) % n].id] = 'BB'
+    return positions
+  }
+  positions[all[dealerIdx].id] = 'BTN'
+  positions[all[(dealerIdx + 1) % n].id] = 'SB'
+  positions[all[(dealerIdx + 2) % n].id] = 'BB'
+
+  // Label the seats between BB (exclusive) and BTN (exclusive), walking forward from
+  // the seat after BB. With k = n - 3 middle seats, fill in with the standard names
+  // for that table size, from earliest to latest.
+  const middleCount = n - 3
+  const middleLabels = positionLabelsForMiddle(middleCount)
+  for (let i = 0; i < middleCount; i++) {
+    positions[all[(dealerIdx + 3 + i) % n].id] = middleLabels[i]
   }
   return positions
+}
+
+// Standard cash/tournament position names by table size. Index 0 is the earliest seat
+// after BB; the last entry is the seat just before BTN.
+function positionLabelsForMiddle(k) {
+  // n=3 (k=0): no middle seats
+  // n=4 (k=1): UTG
+  // n=5 (k=2): UTG, CO
+  // n=6 (k=3): UTG, MP, CO        (6-max standard)
+  // n=7 (k=4): UTG, MP, HJ, CO
+  // n=8 (k=5): UTG, UTG+1, MP, HJ, CO
+  // n=9 (k=6): UTG, UTG+1, MP, MP+1, HJ, CO
+  // n=10 (k=7): UTG, UTG+1, UTG+2, MP, MP+1, HJ, CO
+  const table = {
+    0: [],
+    1: ['UTG'],
+    2: ['UTG', 'CO'],
+    3: ['UTG', 'MP', 'CO'],
+    4: ['UTG', 'MP', 'HJ', 'CO'],
+    5: ['UTG', 'UTG+1', 'MP', 'HJ', 'CO'],
+    6: ['UTG', 'UTG+1', 'MP', 'MP+1', 'HJ', 'CO'],
+    7: ['UTG', 'UTG+1', 'UTG+2', 'MP', 'MP+1', 'HJ', 'CO'],
+  }
+  return table[k] ?? Array.from({ length: k }, (_, i) => `EP+${i}`)
 }
 
 function buildUserMessage(view, handHistoryNote) {
@@ -227,6 +302,19 @@ function buildUserMessage(view, handHistoryNote) {
     : 'Dealer button: (unknown)'
   const selfPos = positions[view.self.id] ? ` — position ${positions[view.self.id]}` : ''
 
+  // Effective stack vs the smallest non-eliminated, non-all-in opponent. This is the
+  // amount that actually matters preflop — at 100bb deep, a 100bb shove is a different
+  // beast from a 20bb shove, and the AI needs to see that.
+  const bb = view.blinds.bigBlind || 1
+  const liveOpps = view.opponents.filter((o) => !o.eliminated && !o.folded)
+  const oppStacks = liveOpps.map((o) => o.stack + o.currentBet)
+  const selfTotal = view.self.stack + view.self.currentBet
+  const effectiveChips = oppStacks.length > 0
+    ? Math.min(selfTotal, ...oppStacks)
+    : selfTotal
+  const effectiveBb = (effectiveChips / bb).toFixed(1).replace(/\.0$/, '')
+  const stackLine = `Effective stack vs the smallest live opponent: ~${effectiveBb}bb (you have ${view.self.stack}, BB=${bb}). Deeper = play tighter preflop; shallower = wider/jam more.`
+
   // Last few chat lines anyone heard. Mark the seat's own lines as "You (Name)" so the
   // model can see what it has already said and avoid repeating itself.
   const recentChat = (view.tableChat ?? []).slice(-12)
@@ -256,6 +344,7 @@ Hole cards: ${view.self.holeCards.join(' ')}
 Your stack: ${view.self.stack}
 Your current bet this street: ${view.self.currentBet}
 Your total committed this hand: ${view.self.totalContributed}
+${stackLine}
 
 === OPPONENTS (in seat order) ===
 ${oppLines}
