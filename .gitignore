@@ -18,8 +18,8 @@ vitest_output.txt
 # OpenSpec workflow artifacts (dev-only)
 openspec/
 
-# Dev-only smoke scripts and their captured outputs
-scripts/
+# Captured outputs from smoke scripts (the .mjs scripts themselves ship)
+scripts/*-out.txt
 
 # Raw asset originals at repo root — the runtime copies under public/ are what the build ships.
 # Leading slash anchors these to the root so we don't accidentally match public/assets/sgh_kortit/.

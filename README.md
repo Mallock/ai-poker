@@ -65,8 +65,6 @@ npm run test:watch   # watch mode
 
 Each AI character accrues a short, in-voice memory across the session: at the end of every hand a small LM Studio call writes one note per still-in-game AI based on that character's own post-hand view (showdown reveals included; folded opponents stay hidden). The notes are injected into every subsequent turn's system prompt, so characters can call back to earlier hands, hold grudges, and exploit reads. Memory is bounded by a rolling window with a distilled long-term impressions string for older observations, is session-only (wiped on new game), and is visible read-only in the Research Panel's **Memory** section.
 
-See [`openspec/changes/scaffold-ai-poker-spa/`](openspec/changes/scaffold-ai-poker-spa/) for the full proposal, design, and spec.
-
 ## Credits
 
 - **Card deck (`public/assets/sgh_kortit/`):** [Pikselipelikortit](https://suomigamehub.itch.io/pikselipelikortit) by [SuomiGameHUB](https://suomigamehub.itch.io/), released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) (May 23, 2024). 70×90 pixel-art deck, all four Finnish-suited ranks plus two jokers and two card backs.
