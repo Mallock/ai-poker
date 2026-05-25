@@ -111,6 +111,26 @@ describe('buildPrompt', () => {
     expect(user).toContain('You (Me): Reckon I will see it.')
   })
 
+  it('surfaces computed made hand + draws in YOUR HAND when postflop (the Kenji bug)', () => {
+    const view = makeView()
+    // Kenji's actual hand: Kh 3h on Ks Kc 6s 4c — trip kings.
+    view.self.holeCards = ['KH', '3H']
+    view.communityCards = ['KS', 'KC', '6S', '4C']
+    view.street = 'turn'
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/Your current made hand.*Three of a Kind/i)
+  })
+
+  it('omits made hand line preflop (no community cards yet)', () => {
+    const view = makeView()
+    view.communityCards = []
+    view.street = 'preflop'
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).not.toContain('Your current made hand')
+  })
+
   it('labels UTG/MP/HJ/CO at a 9-handed table (not just BTN/SB/BB)', () => {
     // Build a 9-seat view, dealer at seat 0. Expected positions walking forward from BTN:
     //   0: BTN, 1: SB, 2: BB, 3: UTG, 4: UTG+1, 5: MP, 6: MP+1, 7: HJ, 8: CO

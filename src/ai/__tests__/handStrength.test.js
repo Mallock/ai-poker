@@ -1,0 +1,68 @@
+import { describe, it, expect } from 'vitest'
+import { describeHandStrength } from '../handStrength.js'
+
+describe('describeHandStrength', () => {
+  it('returns null preflop (fewer than 3 community cards)', () => {
+    expect(describeHandStrength(['AH', 'KH'], [])).toBe(null)
+    expect(describeHandStrength(['AH', 'KH'], ['2C'])).toBe(null)
+    expect(describeHandStrength(['AH', 'KH'], ['2C', '5D'])).toBe(null)
+  })
+
+  it('catches trips when the board pairs a hole card (the Kenji bug)', () => {
+    const s = describeHandStrength(['KH', '3H'], ['6S', 'KC', '4C', 'KS'])
+    expect(s.made.name).toBe('Three of a Kind')
+    expect(s.made.descr).toMatch(/K/)
+  })
+
+  it('catches a flush', () => {
+    const s = describeHandStrength(['AH', '5H'], ['2H', '7H', 'TH'])
+    expect(s.made.name).toBe('Flush')
+  })
+
+  it('catches a straight', () => {
+    const s = describeHandStrength(['9C', '8D'], ['7S', '6H', '5C'])
+    expect(s.made.name).toBe('Straight')
+  })
+
+  it('reports a 4-card flush draw when one hole card contributes', () => {
+    const s = describeHandStrength(['AH', '5C'], ['2H', '7H', 'TH'])
+    expect(s.draws).toContain('4-card flush draw (~9 outs to a flush)')
+  })
+
+  it('does NOT report a flush draw when 4 same-suit are all on the board (no hole-card contribution)', () => {
+    const s = describeHandStrength(['AS', 'KD'], ['2H', '7H', 'TH', 'JH'])
+    expect(s.draws).not.toContain('4-card flush draw (~9 outs to a flush)')
+  })
+
+  it('reports an open-ended straight draw', () => {
+    // Hole: 8c 7d. Board: 6s 5h 2c. Draws to 9 (high end) or 4 (low end) = OESD.
+    const s = describeHandStrength(['8C', '7D'], ['6S', '5H', '2C'])
+    expect(s.draws).toContain('open-ended straight draw (8 outs)')
+  })
+
+  it('reports a gutshot when only an inside card completes the straight', () => {
+    // Hole: 9c 7d. Board: 6s 5h 2c. Needs an 8 (interior). Gutshot.
+    const s = describeHandStrength(['9C', '7D'], ['6S', '5H', '2C'])
+    expect(s.draws).toContain('gutshot straight draw (4 outs)')
+    expect(s.draws).not.toContain('open-ended straight draw (8 outs)')
+  })
+
+  it('does NOT report a straight draw when the straight is already made', () => {
+    const s = describeHandStrength(['9C', '8D'], ['7S', '6H', '5C'])
+    expect(s.draws.find((d) => d.includes('straight draw'))).toBeUndefined()
+  })
+
+  it('reports wheel-end gutshot (A-2-3-_-5 needing a 4) — one-ended, not OESD', () => {
+    // Hole: 2c 3d. Board: As 5h Kc. Needs a 4. Wheel gutshot.
+    const s = describeHandStrength(['2C', '3D'], ['AS', '5H', 'KC'])
+    expect(s.draws).toContain('gutshot straight draw (4 outs)')
+    expect(s.draws).not.toContain('open-ended straight draw (8 outs)')
+  })
+
+  it('stacks flush draw + straight draw tags when both are present', () => {
+    // Hole: 9h 8h. Board: 7h 6c 2h. OESD (5 or T) + flush draw.
+    const s = describeHandStrength(['9H', '8H'], ['7H', '6C', '2H'])
+    expect(s.draws).toContain('open-ended straight draw (8 outs)')
+    expect(s.draws).toContain('4-card flush draw (~9 outs to a flush)')
+  })
+})

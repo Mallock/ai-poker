@@ -1,4 +1,5 @@
 import { chattinessDescriptor } from './characters.js'
+import { describeHandStrength } from './handStrength.js'
 
 // Build the chat-completion messages array for one AI turn.
 // Inputs:
@@ -82,6 +83,8 @@ Preflop discipline is the opposite of postflop aggression. Deep-stacked (≥ ~60
 === POSTFLOP FUNDAMENTALS — DO NOT DEFAULT TO PASSIVE ===
 
 Once the flop is dealt and your hand has shown up alive, this section applies. Preflop discipline above always overrides "be aggressive" — never use the rules below to justify a 100bb preflop shove with a marginal hand.
+
+**Read your hand from the computed line, not from card-by-card visual matching.** The YOUR HAND block contains a pre-computed "Your current made hand: ..." line (e.g. "Three of a Kind, K's"). TRUST it. If it says trips, you have trips — do NOT decide on your own that it's "top pair, weak kicker." If it says straight, flush, full house, two pair — that is what you have. The same line also lists active draws (flush draws, OESD, gutshot). Use these as the FACTUAL starting point for hand strength, then reason about how it plays vs villain's range. Misreading your own hand is the single biggest leak an LLM can have, and it has been removed for you.
 
 Postflop: betting wins pots two ways (folds + showdown). Checking and calling win only one. **When in doubt postflop, BET.** Only check or call when you can articulate, in <think>, why a bet is concretely worse than the bet line.
 
@@ -315,6 +318,19 @@ function buildUserMessage(view, handHistoryNote) {
   const effectiveBb = (effectiveChips / bb).toFixed(1).replace(/\.0$/, '')
   const stackLine = `Effective stack vs the smallest live opponent: ~${effectiveBb}bb (you have ${view.self.stack}, BB=${bb}). Deeper = play tighter preflop; shallower = wider/jam more.`
 
+  // Pre-compute the current 5-card made hand (postflop only). LLMs are unreliable at noticing
+  // when the board pairs one of their hole cards into trips, or when a board card completes a
+  // straight, so we hand them the answer.
+  const strength = describeHandStrength(view.self.holeCards, view.communityCards)
+  const strengthLines = []
+  if (strength?.made) {
+    strengthLines.push(`Your current made hand (computed for you — TRUST this, do not re-derive): ${strength.made.descr} [${strength.made.name}].`)
+  }
+  if (strength?.draws?.length) {
+    strengthLines.push(`Active draws using your hole cards: ${strength.draws.join(', ')}.`)
+  }
+  const strengthBlock = strengthLines.length ? '\n' + strengthLines.join('\n') : ''
+
   // Last few chat lines anyone heard. Mark the seat's own lines as "You (Name)" so the
   // model can see what it has already said and avoid repeating itself.
   const recentChat = (view.tableChat ?? []).slice(-12)
@@ -344,7 +360,7 @@ Hole cards: ${view.self.holeCards.join(' ')}
 Your stack: ${view.self.stack}
 Your current bet this street: ${view.self.currentBet}
 Your total committed this hand: ${view.self.totalContributed}
-${stackLine}
+${stackLine}${strengthBlock}
 
 === OPPONENTS (in seat order) ===
 ${oppLines}
