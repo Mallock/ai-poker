@@ -138,6 +138,34 @@ describe('buildPrompt (Hold\'em)', () => {
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
     expect(user).toMatch(/Your current made hand.*Three of a Kind/i)
+    expect(user).toMatch(/using .*K[hscd] K[hscd] K[hscd]/)
+  })
+
+  it('relabels first hold\'em postflop raise as "bet N" but keeps preflop raises as "raise to N"', () => {
+    const view = makeHoldemView()
+    view.actionHistory = [
+      { handNumber: 1, street: 'preflop', playerId: 'p0', action: 'raise', amount: 300 },
+      { handNumber: 1, street: 'preflop', playerId: 'p1', action: 'call', amount: 200 },
+      { handNumber: 1, street: 'flop', playerId: 'p1', action: 'raise', amount: 400 },
+      { handNumber: 1, street: 'flop', playerId: 'p0', action: 'raise', amount: 1200 },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/\[preflop\] Op0: raise to 300/)
+    expect(user).toMatch(/\[flop\] You: bet 400/)
+    expect(user).toMatch(/\[flop\] Op0: raise to 1200/)
+  })
+
+  it('marks the first hold\'em ACTION ORDER entry as (acting now), even after re-opened action', () => {
+    const view = makeHoldemView()
+    view.toAct = 'p1'
+    view.actionHistory = [
+      { handNumber: 1, street: 'flop', playerId: 'p1', action: 'check', amount: 0 },
+      { handNumber: 1, street: 'flop', playerId: 'p0', action: 'raise', amount: 300 },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/You \(Me\).* \(acting now — action reopened by a raise\)/)
   })
 
   it('omits made hand line preflop but surfaces preflop hand type', () => {
@@ -345,15 +373,107 @@ describe('buildPrompt (stud)', () => {
     const view = makeStudView()
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    expect(user).toContain('upcards 5c 7d')
+    expect(user).toContain('their upcards 5c 7d')
+  })
+
+  it('renders an inferred [visible: ...] tag from opponent upcards (exposed pair)', () => {
+    const view = makeStudView()
+    view.opponents[0].upCards = ['8D', '8C', '7C', 'QS']
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/\[visible: pair of eights exposed\]/)
+  })
+
+  it('renders ten cards as "T" (not "10") in the made-hand "using" line', () => {
+    const view = makeStudView()
+    view.street = 'fifth'
+    view.self.cards = [
+      { card: 'TH', visibility: 'private' },
+      { card: '9H', visibility: 'private' },
+      { card: '7H', visibility: 'public' },
+      { card: '6C', visibility: 'public' },
+      { card: 'TS', visibility: 'public' },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    // The "using ..." block must not leak pokersolver's "10h" notation.
+    expect(user).not.toMatch(/using[^.\n]*\b10[hscd]\b/)
+    // It should however include the ten in "Th" or "Ts" form.
+    expect(user).toMatch(/using[^.\n]*\bT[hscd]\b/)
+  })
+
+  it('flags the bring-in role on the self block during 3rd street', () => {
+    const view = makeStudView()
+    view.street = 'third'
+    view.self.isBringIn = true
+    view.self.cards = [
+      { card: 'AH', visibility: 'private' },
+      { card: 'KH', visibility: 'private' },
+      { card: '2H', visibility: 'public' },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/You are the BRING-IN on 3rd street/)
+  })
+
+  it('does not show the bring-in line on 4th+ streets', () => {
+    const view = makeStudView()
+    view.self.isBringIn = true
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).not.toMatch(/You are the BRING-IN/)
+  })
+
+  it('marks the first player in ACTION ORDER as (acting now), not with ✓ acted', () => {
+    const view = makeStudView()
+    view.toAct = 'p1'
+    view.actionHistory = [
+      { handNumber: 1, street: 'fourth', playerId: 'p0', action: 'raise', amount: 50 },
+      { handNumber: 1, street: 'fourth', playerId: 'p1', action: 'call', amount: 50 },
+      { handNumber: 1, street: 'fourth', playerId: 'p0', action: 'raise', amount: 100 },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/You \(Me\) \(acting now — action reopened by a raise\)/)
+    expect(user).toMatch(/Op0 ✓ acted earlier/)
+  })
+
+  it('relabels raise as "bet N" when it opens a 4th+ street, else "raise to N"', () => {
+    const view = makeStudView()
+    view.actionHistory = [
+      { handNumber: 1, street: 'third', playerId: 'p0', action: 'raise', amount: 50 },
+      { handNumber: 1, street: 'third', playerId: 'p1', action: 'call', amount: 50 },
+      { handNumber: 1, street: 'fourth', playerId: 'p1', action: 'raise', amount: 100 },
+      { handNumber: 1, street: 'fourth', playerId: 'p0', action: 'raise', amount: 200 },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/\[third\] Op0: raise to 50/)
+    expect(user).toMatch(/\[fourth\] You: bet 100/)
+    expect(user).toMatch(/\[fourth\] Op0: raise to 200/)
+  })
+
+  it('includes the 5 cards making the made hand in the YOUR HAND block', () => {
+    const view = makeStudView()
+    view.street = 'fifth'
+    view.self.cards = [
+      { card: 'AH', visibility: 'private' },
+      { card: 'AS', visibility: 'private' },
+      { card: 'KH', visibility: 'public' },
+      { card: 'KS', visibility: 'public' },
+      { card: '4C', visibility: 'public' },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/Made hand .*Two Pair.*using/)
   })
 
   it('renders own private (down) and public (up) cards separately', () => {
     const view = makeStudView()
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    expect(user).toMatch(/Down cards \(private\): Ah Kh/)
-    expect(user).toMatch(/Up cards \(public.*\): Qh 2h/)
+    expect(user).toMatch(/Your down cards \(private.*\): Ah Kh/)
+    expect(user).toMatch(/Your upcards \(face-up.*\): Qh 2h/)
   })
 
   it('selects the stud playStyle string for the character', () => {

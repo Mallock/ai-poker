@@ -82,13 +82,27 @@ export function describeHandStrength(holeCards, communityCards) {
   try {
     const all = [...holeCards, ...communityCards].map(toSolverCard)
     const hand = Hand.solve(all)
-    made = { name: hand.name, descr: hand.descr }
+    made = { name: hand.name, descr: hand.descr, cards: extractSolverCards(hand) }
   } catch {
     made = null
   }
 
   const draws = detectDraws(holeCards, communityCards)
   return { made, draws }
+}
+
+function extractSolverCards(hand) {
+  // Pokersolver returns the ten as "10h" but our codebase uses "Th". Normalize so the
+  // "using ..." line in the prompt matches the rest of the card format. Other ranks pass
+  // through unchanged.
+  return (hand?.cards ?? []).map((c) => {
+    const s = c.toString()
+    if (typeof s !== 'string' || s.length < 2) return s
+    let rank = s.slice(0, -1).toUpperCase()
+    const suit = s.slice(-1).toLowerCase()
+    if (rank === '10') rank = 'T'
+    return rank + suit
+  })
 }
 
 // Returns an array of short draw labels. Only counts draws that USE at least one hole card
@@ -197,7 +211,7 @@ export function describeStudHand({ selfCards, communityCards = [], opponentUpCar
   if (all.length >= 5) {
     try {
       const hand = Hand.solve(all.map(toSolverCard))
-      made = { name: hand.name, descr: hand.descr }
+      made = { name: hand.name, descr: hand.descr, cards: extractSolverCards(hand) }
     } catch {
       made = null
     }
@@ -254,6 +268,91 @@ function classifyThirdStreet(downs, upStr) {
 
   const sortedRanks = [...values].sort((a, b) => b - a).map((v) => Object.keys(RANK_VALUE).find((k) => RANK_VALUE[k] === v))
   return `unconnected high cards: ${sortedRanks.join('-')} — marginal start, fold to a raise without live overcards`
+}
+
+// Describe what an opponent's visible upcards alone show as a minimum hand strength,
+// plus any obvious draws (4-flush, 4-straight) the model should not miss. Returns a short
+// string for inclusion next to their upcards in the prompt, or null if there's nothing
+// useful to say (e.g., only one upcard).
+//
+// Example outputs:
+//   "pair of 8's exposed"
+//   "trip 5's exposed"
+//   "K-high — three to a flush (♠)"
+//   "T-high — four to a straight (open-ended)"
+//   "Q-high"
+export function describeVisibleUpcards(upCards) {
+  if (!Array.isArray(upCards) || upCards.length < 2) return null
+  let parsed
+  try {
+    parsed = upCards.map(parseCard)
+  } catch {
+    return null
+  }
+
+  const counts = {}
+  for (const c of parsed) counts[c.rank] = (counts[c.rank] || 0) + 1
+  const groups = Object.entries(counts)
+    .map(([r, n]) => ({ rank: r, count: n, value: RANK_VALUE[r] }))
+    .sort((a, b) => (b.count - a.count) || (b.value - a.value))
+  const top = groups[0]
+
+  let madeLabel = null
+  if (top.count >= 4) madeLabel = `quad ${RANK_FULL[top.rank]}s exposed`
+  else if (top.count === 3) madeLabel = `trip ${RANK_FULL[top.rank]}s exposed`
+  else if (top.count === 2 && groups[1]?.count === 2) {
+    madeLabel = `two pair exposed (${RANK_FULL[top.rank]}s + ${RANK_FULL[groups[1].rank]}s)`
+  } else if (top.count === 2) madeLabel = `pair of ${RANK_FULL[top.rank]}s exposed`
+
+  const suitCounts = {}
+  for (const c of parsed) suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1
+  const maxSuit = Math.max(...Object.values(suitCounts))
+  const flushNote = maxSuit >= 4
+    ? `four to a flush exposed`
+    : maxSuit === 3 && parsed.length >= 3
+      ? `three to a flush exposed`
+      : null
+
+  // Straight detection on the rank set (treating A as both 14 and 1).
+  const values = new Set()
+  for (const c of parsed) {
+    values.add(RANK_VALUE[c.rank])
+    if (c.rank === 'A') values.add(1)
+  }
+  let straightNote = null
+  if (parsed.length >= 4) {
+    for (let lo = 1; lo <= 11 && !straightNote; lo++) {
+      const window = [lo, lo + 1, lo + 2, lo + 3]
+      const matched = window.filter((v) => values.has(v))
+      if (matched.length >= 4) {
+        const openEnded = lo >= 2 && lo + 3 <= 13
+        straightNote = openEnded
+          ? 'four to a straight exposed (open-ended)'
+          : 'four to a straight exposed (one-ended)'
+      }
+    }
+  }
+  if (!straightNote && parsed.length >= 3) {
+    for (let lo = 1; lo <= 12; lo++) {
+      const window = [lo, lo + 1, lo + 2]
+      const matched = window.filter((v) => values.has(v))
+      if (matched.length === 3) {
+        straightNote = 'three to a straight exposed'
+        break
+      }
+    }
+  }
+
+  const highValue = Math.max(...parsed.map((c) => RANK_VALUE[c.rank]))
+  const highRank = Object.keys(RANK_VALUE).find((k) => RANK_VALUE[k] === highValue)
+  const highLabel = `${highRank}-high`
+
+  const parts = []
+  if (madeLabel) parts.push(madeLabel)
+  else parts.push(highLabel)
+  if (flushNote) parts.push(flushNote)
+  if (straightNote) parts.push(straightNote)
+  return parts.join(' — ')
 }
 
 function computeLiveNote(selfCards, opponentUpCards) {

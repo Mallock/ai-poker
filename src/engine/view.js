@@ -22,6 +22,7 @@ function selfBlock(self) {
     folded: self.folded,
     allIn: self.allIn,
     eliminated: self.eliminated,
+    isBringIn: self.isBringIn ?? false,
     cards: cloneCards(self.cards),
   }
 }

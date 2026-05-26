@@ -1,5 +1,5 @@
 import { chattinessDescriptor } from './characters.js'
-import { describeHandStrength, describePreflopHand, describeStudHand } from './handStrength.js'
+import { describeHandStrength, describePreflopHand, describeStudHand, describeVisibleUpcards } from './handStrength.js'
 
 // Build the chat-completion messages array for one AI turn.
 // Inputs:
@@ -329,11 +329,55 @@ function orderFromToAct(view, byId) {
   return ordered.filter((p) => byId.has(p.id))
 }
 
+// Marker shown after a player's name in the ACTION ORDER list. The first entry is the
+// player whose turn it is now; any prior-acted mark on them means action reopened by a raise.
+// On any other entry, a prior-acted mark means they've already locked in their action.
+function actorMarker(idx, actedThisStreet) {
+  if (idx === 0) {
+    return actedThisStreet ? ' (acting now — action reopened by a raise)' : ' (acting now)'
+  }
+  return actedThisStreet ? ' ✓ acted earlier' : ''
+}
+
+// Render the action history with unambiguous bet/raise labels. Two pitfalls fixed here:
+//   1. `raise N` in the stored history meant "raise to total bet level N" — but the model
+//      kept reading it as "raise BY N". We always render `raise to N`.
+//   2. The opening voluntary aggression of a fresh street (e.g., the first 4th-street bet
+//      in stud, or a flop bet in hold'em) is recorded as `raise` by the engine but is really
+//      a bet. We relabel it as `bet N`. Streets with an implicit forced post (hold'em preflop,
+//      stud 3rd street with its bring-in) keep `raise to N` since there's already a bet to
+//      raise over.
+function formatActionHistory(view, handActions) {
+  const sawAggression = {}
+  return handActions.map((a) => {
+    const who = historyName(view, findPlayer(view, a.playerId))
+    let body = a.action
+    if (a.action === 'raise') {
+      const implicitForcedBet = (view.gameType === 'stud' && a.street === 'third')
+        || (view.gameType !== 'stud' && a.street === 'preflop')
+      const opensStreet = !implicitForcedBet && !sawAggression[a.street]
+      body = opensStreet ? `bet ${a.amount}` : `raise to ${a.amount}`
+    } else if (a.action === 'all-in') {
+      body = a.amount ? `all-in to ${a.amount}` : 'all-in'
+    } else if (a.action === 'call') {
+      body = a.amount ? `call ${a.amount}` : 'call'
+    } else if (a.amount) {
+      body = `${a.action} ${a.amount}`
+    }
+    if (a.action === 'raise' || a.action === 'all-in') {
+      sawAggression[a.street] = true
+    }
+    return `  - [${a.street}] ${who}: ${body}`
+  })
+}
+
 // Render a card as "Jh" instead of "JH" — lowercase suits are easier for the LLM to parse.
+// Also normalizes "10h" (pokersolver's ten format) → "Th" so the prompt is internally consistent.
 function fmtCard(card) {
   if (typeof card !== 'string' || card.length < 2) return String(card ?? '')
-  const rank = card.slice(0, -1).toUpperCase()
+  let rank = card.slice(0, -1).toUpperCase()
   const suit = card.slice(-1).toLowerCase()
+  if (rank === '10') rank = 'T'
   return rank + suit
 }
 function fmtCards(cards) {
@@ -400,12 +444,12 @@ function buildHoldemUserMessage(view, handHistoryNote) {
       .map((a) => a.playerId),
   )
   const orderLine = orderedLive.length
-    ? orderedLive.map((p) => {
+    ? orderedLive.map((p, idx) => {
         const isYou = p.id === view.self.id
         const name = isYou ? `You (${p.name})` : p.name
         const pos = positions[p.id] ? ` [${positions[p.id]}]` : ''
-        const acted = actedThisStreet.has(p.id) ? ' ✓ acted' : ''
-        return `${name}${pos}${acted}`
+        const marker = actorMarker(idx, actedThisStreet.has(p.id))
+        return `${name}${pos}${marker}`
       }).join(' → ')
     : '(no live players)'
 
@@ -419,13 +463,8 @@ function buildHoldemUserMessage(view, handHistoryNote) {
     blindEntries.push(`  - [preflop] ${historyName(view, findPlayer(view, bbId))}: posts big blind ${view.blinds.bigBlind}`)
   }
 
-  const actionEntries = view.actionHistory
-    .filter((a) => a.handNumber === view.handNumber)
-    .map((a) => {
-      const who = historyName(view, findPlayer(view, a.playerId))
-      const amt = a.amount ? ` ${a.amount}` : ''
-      return `  - [${a.street}] ${who}: ${a.action}${amt}`
-    })
+  const handActions = view.actionHistory.filter((a) => a.handNumber === view.handNumber)
+  const actionEntries = formatActionHistory(view, handActions)
 
   const historyLines = [...blindEntries, ...actionEntries].join('\n') || '  (no actions yet this hand)'
 
@@ -467,7 +506,8 @@ function buildHoldemUserMessage(view, handHistoryNote) {
   const strength = describeHandStrength(holeCards, view.communityCards)
   const strengthLines = []
   if (strength?.made) {
-    strengthLines.push(`Your current made hand (computed for you — TRUST this, do not re-derive): ${strength.made.descr} [${strength.made.name}].`)
+    const using = strength.made.cards?.length ? ` — using ${fmtCards(strength.made.cards)}` : ''
+    strengthLines.push(`Your current made hand (computed for you — TRUST this, do not re-derive): ${strength.made.descr} [${strength.made.name}]${using}.`)
   } else {
     const preflop = describePreflopHand(holeCards)
     if (preflop) strengthLines.push(`Hand type (computed for you — TRUST this, do not re-derive): ${preflop}.`)
@@ -518,7 +558,7 @@ ${stackLine}${strengthBlock}
 ${liveLines || '  (none — hand should be over)'}
 
 === ACTION ORDER THIS STREET ===
-Acting now → next → ... (✓ = already acted this street)
+Reads left-to-right: (acting now) → next → ... A "✓ acted earlier" marker on a NON-first player means they already acted this street; on the FIRST (acting-now) player it means action was reopened by a raise and is now back on them.
 ${orderLine}
 
 === OPPONENTS (full table, in seat order) ===
@@ -541,8 +581,11 @@ function buildStudUserMessage(view, handHistoryNote) {
       : ''
     const bringIn = o.isBringIn ? '[BRING-IN]' : ''
     const tags = [status, bringIn].filter(Boolean).join(' ')
-    const ups = (o.upCards ?? []).length ? `upcards ${fmtCards(o.upCards)}` : 'upcards (none yet)'
-    return `  - ${opponentLabel(o)} (seat ${o.seatIndex})${tags ? ' ' + tags : ''} — stack ${o.stack}, currentBet ${o.currentBet}, totalThisHand ${o.totalContributed} — ${ups}`
+    const upCards = o.upCards ?? []
+    const ups = upCards.length ? `their upcards ${fmtCards(upCards)}` : 'their upcards (none yet)'
+    const visible = describeVisibleUpcards(upCards)
+    const visibleNote = visible ? ` [visible: ${visible}]` : ''
+    return `  - ${opponentLabel(o)} (seat ${o.seatIndex})${tags ? ' ' + tags : ''} — stack ${o.stack}, currentBet ${o.currentBet}, totalThisHand ${o.totalContributed} — ${ups}${visibleNote}`
   }).join('\n')
 
   const allLive = [view.self, ...view.opponents]
@@ -555,21 +598,16 @@ function buildStudUserMessage(view, handHistoryNote) {
       .map((a) => a.playerId),
   )
   const orderLine = orderedLive.length
-    ? orderedLive.map((p) => {
+    ? orderedLive.map((p, idx) => {
         const isYou = p.id === view.self.id
         const name = isYou ? `You (${p.name})` : p.name
-        const acted = actedThisStreet.has(p.id) ? ' ✓ acted' : ''
-        return `${name}${acted}`
+        const marker = actorMarker(idx, actedThisStreet.has(p.id))
+        return `${name}${marker}`
       }).join(' → ')
     : '(no live players)'
 
-  const actionEntries = view.actionHistory
-    .filter((a) => a.handNumber === view.handNumber)
-    .map((a) => {
-      const who = historyName(view, findPlayer(view, a.playerId))
-      const amt = a.amount ? ` ${a.amount}` : ''
-      return `  - [${a.street}] ${who}: ${a.action}${amt}`
-    })
+  const handActions = view.actionHistory.filter((a) => a.handNumber === view.handNumber)
+  const actionEntries = formatActionHistory(view, handActions)
   const historyLines = actionEntries.length
     ? actionEntries.join('\n')
     : '  (no actions yet this hand)'
@@ -605,7 +643,8 @@ function buildStudUserMessage(view, handHistoryNote) {
   })
   const studLines = []
   if (stud?.made) {
-    studLines.push(`Made hand (computed for you — TRUST this): ${stud.made.descr} [${stud.made.name}].`)
+    const using = stud.made.cards?.length ? ` — using ${fmtCards(stud.made.cards)}` : ''
+    studLines.push(`Made hand (computed for you — TRUST this): ${stud.made.descr} [${stud.made.name}]${using}.`)
   }
   if (stud?.structure) {
     studLines.push(`Starting structure (3rd street): ${stud.structure}.`)
@@ -638,6 +677,10 @@ ${otherChat.map((c) => {
   const ownPrivate = selfCards.filter((c) => c.visibility === 'private').map((c) => c.card)
   const ownPublic = selfCards.filter((c) => c.visibility === 'public').map((c) => c.card)
 
+  const bringInLine = view.self.isBringIn && view.street === 'third'
+    ? `\nYou are the BRING-IN on 3rd street (your upcard is the lowest at the table — you've already posted the forced bring-in of ${view.limits?.bringIn ?? ''} and act first this street).`
+    : ''
+
   const communityLine = view.communityCards.length
     ? `Community card (deck shortage): ${fmtCards(view.communityCards)}`
     : 'Community cards: (none in stud unless deck runs short)'
@@ -652,18 +695,19 @@ Current bet to match: ${view.currentBet}
 Card format note: cards are shown as <rank><suit-letter> with suit lowercase — h=hearts, d=diamonds, c=clubs, s=spades.
 ${handHistoryNote ? handHistoryNote + '\n' : ''}
 === YOUR HAND ===
-You are ${view.self.name} in seat ${view.self.seatIndex}.
-Down cards (private): ${fmtCards(ownPrivate)}
-Up cards (public, opponents can see): ${ownPublic.length ? fmtCards(ownPublic) : '(none yet)'}
+You are ${view.self.name} in seat ${view.self.seatIndex}.${bringInLine}
+Your down cards (private — only you see these): ${fmtCards(ownPrivate)}
+Your upcards (face-up — every opponent sees these): ${ownPublic.length ? fmtCards(ownPublic) : '(none yet)'}
 Your stack: ${view.self.stack}
 Your current bet this street: ${view.self.currentBet}
 Your total committed this hand: ${view.self.totalContributed}${strengthBlock}
 
 === ACTION ORDER THIS STREET ===
-Acting now → next → ... (✓ = already acted this street)
+Reads left-to-right: (acting now) → next → ... A "✓ acted earlier" marker on a NON-first player means they already acted this street; on the FIRST (acting-now) player it means action was reopened by a raise and is now back on them.
 ${orderLine}
 
-=== OPPONENTS (full table, in seat order — read their upcards) ===
+=== OPPONENTS (full table, in seat order — read THEIR upcards) ===
+The [visible: ...] tag is computed for you from each opponent's exposed upcards alone — it shows their MINIMUM hand (what they're guaranteed to have at least) plus any obvious draws (4-flush, 4-straight) on their board. Their hidden downcards may make them stronger; they cannot be weaker than what's visible.
 ${oppLines}
 
 === ACTION HISTORY (this hand) ===

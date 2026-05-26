@@ -120,6 +120,7 @@ function pctRaise(p) {
     </div>
 
     <button
+      v-if="!isFixedLimit"
       class="btn btn-allin"
       :disabled="disabled || !legalActions.canAllIn"
       @click="submit('all-in', legalActions.allInAmount)"
