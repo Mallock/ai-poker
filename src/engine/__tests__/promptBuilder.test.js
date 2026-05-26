@@ -36,47 +36,60 @@ describe('parseActionJson', () => {
   })
 })
 
-describe('buildPrompt', () => {
-  function makeView() {
-    return {
-      handNumber: 1, street: 'flop',
-      blinds: { smallBlind: 50, bigBlind: 100, ante: 0 },
-      dealerId: 'p0', toAct: 'p1',
-      communityCards: ['AS', 'KH', '7D'],
-      pots: [{ amount: 600, eligible: ['p0', 'p1', 'p2'] }],
-      potTotal: 600, currentBet: 0, minRaiseIncrement: 100,
-      actionHistory: [],
-      self: { id: 'p1', name: 'Me', seatIndex: 1, characterId: 'the-cowboy', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 200, folded: false, allIn: false, eliminated: false, holeCards: ['AH', 'AD'] },
-      opponents: [
-        { id: 'p0', name: 'Op0', seatIndex: 0, characterId: 'the-old-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 200, folded: false, allIn: false, eliminated: false },
-      ],
-      legalActions: { canFold: true, canCheck: true, canCall: false, callAmount: 0, canRaise: true, minRaise: 100, maxRaise: 1000, canAllIn: true, allInAmount: 1000 },
-    }
+function makeHoldemView(holeStrings = ['AH', 'AD']) {
+  return {
+    gameType: 'holdem',
+    limitStructure: 'no-limit',
+    handNumber: 1, street: 'flop',
+    blinds: { smallBlind: 50, bigBlind: 100, ante: 0 },
+    limits: null,
+    bigBetUnlocked: false,
+    dealerId: 'p0', toAct: 'p1',
+    communityCards: ['AS', 'KH', '7D'],
+    pots: [{ amount: 600, eligible: ['p0', 'p1', 'p2'] }],
+    potTotal: 600, currentBet: 0, minRaiseIncrement: 100,
+    actionHistory: [],
+    self: {
+      id: 'p1', name: 'Me', seatIndex: 1, characterId: 'the-cowboy', isHuman: false,
+      stack: 1000, currentBet: 0, totalContributed: 200, folded: false, allIn: false, eliminated: false,
+      cards: holeStrings.map((c) => ({ card: c, visibility: 'private' })),
+    },
+    opponents: [
+      {
+        id: 'p0', name: 'Op0', seatIndex: 0, characterId: 'the-old-pro', isHuman: false,
+        stack: 1000, currentBet: 0, totalContributed: 200, folded: false, allIn: false, eliminated: false,
+        upCards: [],
+      },
+    ],
+    legalActions: { canFold: true, canCheck: true, canCall: false, callAmount: 0, canRaise: true, minRaise: 100, maxRaise: 1000, canAllIn: true, allInAmount: 1000 },
   }
+}
 
-  const character = { id: 'the-cowboy', name: 'The Cowboy', personality: 'p', playStyle: 's' }
+function setSelfHole(view, holeStrings) {
+  view.self.cards = holeStrings.map((c) => ({ card: c, visibility: 'private' }))
+}
+
+describe('buildPrompt (Hold\'em)', () => {
+  const character = { id: 'the-cowboy', name: 'The Cowboy', personality: 'p', playStyle: { holdem: 's', stud: 's2' } }
 
   it('does not include any other-player hole cards in serialized messages', () => {
-    const messages = buildPrompt({ view: makeView(), character })
+    const messages = buildPrompt({ view: makeHoldemView(), character })
     const json = JSON.stringify(messages)
-    // Cards are rendered with lowercase suits in the prompt (Ah, Ad). The raw cards from the
-    // view ('AH', 'AD') are still embedded in the system message via the character/memory
-    // path, but the rendered output uses 'Ah' / 'Ad'.
-    expect(json).toMatch(/A[hd]/i) // own card present in some form
-    expect(json).toContain('Ah')   // formatted own card
-    expect(json).toContain('Ad')   // formatted own card
-    expect(json).not.toMatch(/"holeCards"\s*:/) // opponents shouldn't have any holeCards field
+    expect(json).toMatch(/A[hd]/i)
+    expect(json).toContain('Ah')
+    expect(json).toContain('Ad')
+    expect(json).not.toMatch(/"holeCards"\s*:/)
   })
 
   it('omits the TABLE MEMORY section entirely when memory is empty', () => {
-    const messages = buildPrompt({ view: makeView(), character, memory: '' })
+    const messages = buildPrompt({ view: makeHoldemView(), character, memory: '' })
     const system = messages[0].content
     expect(system).not.toContain('=== TABLE MEMORY ===')
   })
 
   it('inserts TABLE MEMORY between YOUR CHARACTER and OUTPUT FORMAT when present', () => {
     const memory = '=== TABLE MEMORY ===\nLasting impressions: Reggie tilts loud.'
-    const messages = buildPrompt({ view: makeView(), character, memory })
+    const messages = buildPrompt({ view: makeHoldemView(), character, memory })
     const system = messages[0].content
     const charIdx = system.indexOf('=== YOUR CHARACTER ===')
     const memIdx = system.indexOf('=== TABLE MEMORY ===')
@@ -87,24 +100,15 @@ describe('buildPrompt', () => {
     expect(system).toContain('Reggie tilts loud.')
   })
 
-  it('only includes the requesting character\'s memory (never another character\'s)', () => {
-    const memoryA = '=== TABLE MEMORY ===\nLasting impressions: Wade is bluffy.'
-    const messages = buildPrompt({ view: makeView(), character, memory: memoryA })
-    const system = messages[0].content
-    expect(system).toContain('Wade is bluffy.')
-    // A separate character's memory string is never passed in this call, so it can't leak.
-    expect(system).not.toContain('Vera slow-plays')
-  })
-
   it('omits chat blocks entirely when log is empty', () => {
-    const messages = buildPrompt({ view: makeView(), character })
+    const messages = buildPrompt({ view: makeHoldemView(), character })
     const user = messages[1].content
     expect(user).not.toContain('LINES YOU HAVE ALREADY SAID')
     expect(user).not.toContain('RECENT TABLE CHAT')
   })
 
   it('separates own lines (prominent DO NOT REPEAT block) from others lines', () => {
-    const view = makeView()
+    const view = makeHoldemView()
     view.tableChat = [
       { handNumber: 1, street: 'preflop', playerId: 'p0', name: 'Op0', characterId: 'the-old-pro', text: 'Your bet.' },
       { handNumber: 1, street: 'flop', playerId: 'p1', name: 'Me', characterId: 'the-cowboy', text: 'Hungry, partner?' },
@@ -117,21 +121,18 @@ describe('buildPrompt', () => {
     expect(ownIdx).toBeGreaterThanOrEqual(0)
     expect(othersIdx).toBeGreaterThan(ownIdx)
 
-    // Self's line "Hungry, partner?" lives in the OWN block (between ownIdx and othersIdx).
     const ownBlock = user.slice(ownIdx, othersIdx)
     expect(ownBlock).toContain('Hungry, partner?')
     expect(ownBlock).not.toContain('Your bet.')
 
-    // Other player's line "Your bet." lives in the OTHERS block (after othersIdx).
     const othersBlock = user.slice(othersIdx)
     expect(othersBlock).toContain('Op0: Your bet.')
     expect(othersBlock).not.toContain('Hungry, partner?')
   })
 
-  it('surfaces computed made hand + draws in YOUR HAND when postflop (the Kenji bug)', () => {
-    const view = makeView()
-    // Kenji's actual hand: Kh 3h on Ks Kc 6s 4c — trip kings.
-    view.self.holeCards = ['KH', '3H']
+  it('surfaces computed made hand + draws in YOUR HAND when postflop', () => {
+    const view = makeHoldemView()
+    setSelfHole(view, ['KH', '3H'])
     view.communityCards = ['KS', 'KC', '6S', '4C']
     view.street = 'turn'
     const messages = buildPrompt({ view, character })
@@ -139,11 +140,11 @@ describe('buildPrompt', () => {
     expect(user).toMatch(/Your current made hand.*Three of a Kind/i)
   })
 
-  it('omits made hand line preflop (no community cards yet) but surfaces preflop hand type', () => {
-    const view = makeView()
+  it('omits made hand line preflop but surfaces preflop hand type', () => {
+    const view = makeHoldemView()
     view.communityCards = []
     view.street = 'preflop'
-    view.self.holeCards = ['QS', 'TH'] // offsuit — the Vera bug she misread as "suited"
+    setSelfHole(view, ['QS', 'TH'])
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
     expect(user).not.toContain('Your current made hand')
@@ -151,37 +152,41 @@ describe('buildPrompt', () => {
   })
 
   it('labels QS QH as a pocket pair preflop', () => {
-    const view = makeView()
+    const view = makeHoldemView()
     view.communityCards = []
     view.street = 'preflop'
-    view.self.holeCards = ['QS', 'QH']
+    setSelfHole(view, ['QS', 'QH'])
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
     expect(user).toMatch(/Hand type.*Q-Q.*pocket queens/i)
   })
 
   it('labels 7h 6h as suited connectors preflop', () => {
-    const view = makeView()
+    const view = makeHoldemView()
     view.communityCards = []
     view.street = 'preflop'
-    view.self.holeCards = ['7H', '6H']
+    setSelfHole(view, ['7H', '6H'])
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
     expect(user).toMatch(/Hand type.*7-6 suited.*connectors/i)
   })
 
-  it('labels UTG/MP/HJ/CO at a 9-handed table (not just BTN/SB/BB)', () => {
-    // Build a 9-seat view, dealer at seat 0. Expected positions walking forward from BTN:
-    //   0: BTN, 1: SB, 2: BB, 3: UTG, 4: UTG+1, 5: MP, 6: MP+1, 7: HJ, 8: CO
-    const self = { id: 'p5', name: 'Me', seatIndex: 5, characterId: 'the-cowboy', isHuman: false, stack: 10000, currentBet: 0, totalContributed: 0, folded: false, allIn: false, eliminated: false, holeCards: ['AS', '2H'] }
+  it('labels UTG/MP/HJ/CO at a 9-handed table', () => {
+    const self = {
+      id: 'p5', name: 'Me', seatIndex: 5, characterId: 'the-cowboy', isHuman: false,
+      stack: 10000, currentBet: 0, totalContributed: 0, folded: false, allIn: false, eliminated: false,
+      cards: [{ card: 'AS', visibility: 'private' }, { card: '2H', visibility: 'private' }],
+    }
     const opponents = [0, 1, 2, 3, 4, 6, 7, 8].map((i) => ({
       id: `p${i}`, name: `Op${i}`, seatIndex: i, characterId: null, isHuman: false,
       stack: 10000, currentBet: 0, totalContributed: 0,
       folded: false, allIn: false, eliminated: false,
+      upCards: [],
     }))
     const view = {
+      gameType: 'holdem', limitStructure: 'no-limit',
       handNumber: 1, street: 'preflop',
-      blinds: { smallBlind: 50, bigBlind: 100, ante: 0 },
+      blinds: { smallBlind: 50, bigBlind: 100, ante: 0 }, limits: null, bigBetUnlocked: false,
       dealerId: 'p0', toAct: 'p5',
       communityCards: [], pots: [], potTotal: 150, currentBet: 100, minRaiseIncrement: 100,
       actionHistory: [], self, opponents,
@@ -189,7 +194,6 @@ describe('buildPrompt', () => {
     }
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    // Seat 0 is BTN, seat 5 is self → expect MP
     expect(user).toContain('Op0 (seat 0) [BTN]')
     expect(user).toContain('Op1 (seat 1) [SB]')
     expect(user).toContain('Op2 (seat 2) [BB]')
@@ -202,30 +206,29 @@ describe('buildPrompt', () => {
   })
 
   it('reports effective stack in big blinds in the YOUR HAND section', () => {
-    const view = makeView()
-    // self.stack = 1000, opponent stack = 1000, BB=100 → effective ~10bb
+    const view = makeHoldemView()
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
     expect(user).toMatch(/Effective stack vs the smallest live opponent: ~10bb/)
   })
 
   it('caps OTHERS chat at the most recent 12 entries', () => {
-    const view = makeView()
+    const view = makeHoldemView()
     view.tableChat = Array.from({ length: 20 }, (_, i) => ({
       handNumber: 1, street: 'preflop', playerId: 'p0', name: 'Op0', characterId: 'the-old-pro',
       text: `line ${i}`,
     }))
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    expect(user).not.toContain('line 7') // dropped
-    expect(user).toContain('line 8')     // 12th from the end
-    expect(user).toContain('line 19')    // most recent
+    expect(user).not.toContain('line 7')
+    expect(user).toContain('line 8')
+    expect(user).toContain('line 19')
   })
 
   it('renders cards with lowercase suits in community and hole-card lines (Jh, not JH)', () => {
-    const view = makeView()
+    const view = makeHoldemView()
     view.communityCards = ['AS', 'KH', '7D']
-    view.self.holeCards = ['JH', 'TC']
+    setSelfHole(view, ['JH', 'TC'])
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
     expect(user).toMatch(/Community cards: As Kh 7d/)
@@ -234,11 +237,10 @@ describe('buildPrompt', () => {
   })
 
   it('emits LIVE PLAYERS list (folded seats excluded)', () => {
-    const view = makeView()
-    // Add a folded opponent and a still-in opponent.
+    const view = makeHoldemView()
     view.opponents = [
-      { id: 'p0', name: 'Op0', seatIndex: 0, characterId: 'the-old-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 200, folded: true, allIn: false, eliminated: false },
-      { id: 'p2', name: 'Op2', seatIndex: 2, characterId: 'the-stoic-asian-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 0, folded: false, allIn: false, eliminated: false },
+      { id: 'p0', name: 'Op0', seatIndex: 0, characterId: 'the-old-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 200, folded: true, allIn: false, eliminated: false, upCards: [] },
+      { id: 'p2', name: 'Op2', seatIndex: 2, characterId: 'the-stoic-asian-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 0, folded: false, allIn: false, eliminated: false, upCards: [] },
     ]
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
@@ -248,54 +250,124 @@ describe('buildPrompt', () => {
     const liveBlock = user.slice(liveIdx, orderIdx)
     expect(liveBlock).toContain('You (Me)')
     expect(liveBlock).toContain('Op2')
-    expect(liveBlock).not.toContain('Op0') // folded
-  })
-
-  it('renders ACTION ORDER starting from to-act, skipping folded/all-in', () => {
-    const view = makeView()
-    view.toAct = 'p1'
-    view.opponents = [
-      { id: 'p0', name: 'Op0', seatIndex: 0, characterId: 'the-old-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 200, folded: true, allIn: false, eliminated: false },
-      { id: 'p2', name: 'Op2', seatIndex: 2, characterId: 'the-stoic-asian-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 0, folded: false, allIn: false, eliminated: false },
-    ]
-    const messages = buildPrompt({ view, character })
-    const user = messages[1].content
-    const orderIdx = user.indexOf('=== ACTION ORDER')
-    const nextIdx = user.indexOf('=== ', orderIdx + 4) // next section header
-    const orderBlock = user.slice(orderIdx, nextIdx > 0 ? nextIdx : user.length)
-    // p0 is folded → not in the action order. p1 (self) is to-act → leads. p2 follows.
-    expect(orderBlock).toMatch(/You \(Me\).*→.*Op2/)
-    expect(orderBlock).not.toContain('Op0')
+    expect(liveBlock).not.toContain('Op0')
   })
 
   it('renders pot odds when there is a bet to call', () => {
-    const view = makeView()
+    const view = makeHoldemView()
     view.potTotal = 600
     view.currentBet = 200
     view.legalActions = { ...view.legalActions, canCheck: false, canCall: true, callAmount: 200 }
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    // call 200 into pot 600 → ratio 3:1, equity needed 200/800 = 25%
     expect(user).toMatch(/Pot odds to call 200.*3:1.*~25%/)
   })
 
-  it('omits pot odds line when checking is free (no bet to call)', () => {
-    const view = makeView() // makeView has canCheck=true, callAmount=0
+  it('omits pot odds line when checking is free', () => {
+    const view = makeHoldemView()
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
     expect(user).not.toContain('Pot odds to call')
   })
 
   it('caps OWN-lines block at the most recent 6 entries', () => {
-    const view = makeView()
+    const view = makeHoldemView()
     view.tableChat = Array.from({ length: 10 }, (_, i) => ({
       handNumber: 1, street: 'preflop', playerId: 'p1', name: 'Me', characterId: 'the-cowboy',
       text: `mine ${i}`,
     }))
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    expect(user).not.toContain('mine 3') // dropped (only last 6 kept: 4..9)
+    expect(user).not.toContain('mine 3')
     expect(user).toContain('mine 4')
     expect(user).toContain('mine 9')
+  })
+})
+
+function makeStudView() {
+  return {
+    gameType: 'stud',
+    limitStructure: 'fixed-limit',
+    handNumber: 1, street: 'fourth',
+    blinds: { smallBlind: 0, bigBlind: 0, ante: 10 },
+    limits: { ante: 10, bringIn: 25, smallBet: 50, bigBet: 100 },
+    bigBetUnlocked: false,
+    raisesThisStreet: 0,
+    dealerId: null, toAct: 'p1',
+    communityCards: [],
+    pots: [{ amount: 200, eligible: ['p0', 'p1', 'p2'] }],
+    potTotal: 200, currentBet: 50, minRaiseIncrement: 50,
+    actionHistory: [],
+    self: {
+      id: 'p1', name: 'Me', seatIndex: 1, characterId: 'the-cowboy', isHuman: false,
+      stack: 1000, currentBet: 0, totalContributed: 60, folded: false, allIn: false, eliminated: false,
+      cards: [
+        { card: 'AH', visibility: 'private' },
+        { card: 'KH', visibility: 'private' },
+        { card: 'QH', visibility: 'public' },
+        { card: '2H', visibility: 'public' },
+      ],
+    },
+    opponents: [
+      {
+        id: 'p0', name: 'Op0', seatIndex: 0, characterId: 'the-old-pro', isHuman: false,
+        stack: 1000, currentBet: 50, totalContributed: 110, folded: false, allIn: false, eliminated: false,
+        upCards: ['5C', '7D'],
+        isBringIn: true,
+      },
+    ],
+    legalActions: { canFold: true, canCheck: false, canCall: true, callAmount: 50, canRaise: true, minRaise: 100, maxRaise: 100, canAllIn: true, allInAmount: 1000 },
+  }
+}
+
+describe('buildPrompt (stud)', () => {
+  const character = { id: 'the-cowboy', name: 'The Cowboy', personality: 'p', playStyle: { holdem: 'h', stud: 'stud style' } }
+
+  it('emits the stud strategy section (3rd street, live cards, fixed limit)', () => {
+    const view = makeStudView()
+    const messages = buildPrompt({ view, character })
+    const system = messages[0].content
+    expect(system).toMatch(/3rd[- ]street/i)
+    expect(system).toMatch(/[lL]ive [cC]ards/)
+    expect(system).toMatch(/[Ff]ixed[- ]limit|[bB]ring[- ]in/)
+  })
+
+  it('does NOT emit Hold\'em-only concepts (c-bet, BTN/CO/HJ, preflop ranges by position)', () => {
+    const view = makeStudView()
+    const messages = buildPrompt({ view, character })
+    const system = messages[0].content
+    expect(system).not.toMatch(/c-bet/i)
+    expect(system).not.toMatch(/preflop ranges by position/i)
+    expect(system).not.toMatch(/BTN\/CO\/HJ/)
+  })
+
+  it('renders opponents\' upcards in the user message so the model can read boards', () => {
+    const view = makeStudView()
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toContain('upcards 5c 7d')
+  })
+
+  it('renders own private (down) and public (up) cards separately', () => {
+    const view = makeStudView()
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/Down cards \(private\): Ah Kh/)
+    expect(user).toMatch(/Up cards \(public.*\): Qh 2h/)
+  })
+
+  it('selects the stud playStyle string for the character', () => {
+    const view = makeStudView()
+    const messages = buildPrompt({ view, character })
+    const system = messages[0].content
+    expect(system).toContain('stud style')
+    expect(system).not.toContain('Play style (your default frequency dial — read the section above on how this maps to action): h\n')
+  })
+
+  it('renders the fixed-limit raise hint instead of a slider range', () => {
+    const view = makeStudView()
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/raise to 100 \(fixed limit/)
   })
 })

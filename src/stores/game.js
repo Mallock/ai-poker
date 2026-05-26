@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import { reactive } from 'vue'
-import { createInitialState, startHand } from '../engine/state.js'
+import { createInitialState, startHand, getHoleCards } from '../engine/state.js'
 import { applyAction, legalActions } from '../engine/betting.js'
 import { getPlayerView, getHandSummaryView } from '../engine/view.js'
 import { defaultBlindSchedule } from '../engine/blindSchedule.js'
+import { defaultStudLimitSchedule } from '../engine/limitSchedule.js'
 import { createStubDriver } from '../ai/stubDriver.js'
 import { createLlmDriver } from '../ai/llmDriver.js'
 import { requestWinningQuip } from '../ai/winningQuip.js'
@@ -61,8 +62,13 @@ export const useGameStore = defineStore('game', {
   actions: {
     startTournament(config) {
       const seats = [...config.seats]
+      const gameType = config.gameType ?? 'holdem'
+      const limitStructure = config.limitStructure
+        ?? (gameType === 'stud' ? 'fixed-limit' : 'no-limit')
       const blindSchedule = config.blindSchedule
         ?? defaultBlindSchedule(12, config.handsPerLevel ?? 10)
+      const limitSchedule = config.limitSchedule
+        ?? (gameType === 'stud' ? defaultStudLimitSchedule(12, config.handsPerLevel ?? 10) : null)
       const startingStack = config.startingStack ?? 10000
       const ai = useAiStore()
       ai.init()
@@ -82,6 +88,9 @@ export const useGameStore = defineStore('game', {
         seats,
         startingStack,
         blindSchedule,
+        limitSchedule,
+        gameType,
+        limitStructure,
         rngSeed: config.rngSeed ?? Date.now(),
       }))
       this.aiDriverFactory = aiDriverFactory
@@ -209,7 +218,7 @@ export const useGameStore = defineStore('game', {
             uncontested: !!a.uncontested,
             amount: a.potAmount,
             handDescr: a.winningHand?.descr ?? null,
-            holeCards: a.uncontested ? null : winner.holeCards, // private until showdown
+            holeCards: a.uncontested ? null : getHoleCards(winner), // private until showdown
             communityCards: state.communityCards,
             opponents: state.players
               .filter((pl) => pl.id !== winnerId && !pl.eliminated && !pl.folded)

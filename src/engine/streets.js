@@ -1,6 +1,7 @@
 import { draw } from './deck.js'
 import { nextActiveIndex } from './state.js'
 import { awardPotsAtShowdown } from './showdown.js'
+import { advanceStreetIfReadyStud } from './streetsStud.js'
 
 // Returns true if the street ended (and possibly more streets cascaded after).
 export function advanceStreetIfReady(state) {
@@ -13,7 +14,15 @@ export function advanceStreetIfReady(state) {
   }
   state.currentBet = 0
   state.lastRaiseSize = 0
+  state.raisesThisStreet = 0
 
+  if (state.gameType === 'stud') {
+    return advanceStreetIfReadyStud(state)
+  }
+  return advanceStreetIfReadyHoldem(state)
+}
+
+function advanceStreetIfReadyHoldem(state) {
   // Check: do we still have ≥2 players with chips to bet? If not, deal remaining streets without action.
   const stillIn = state.players.filter((p) => !p.folded && !p.eliminated)
   const canBet = stillIn.filter((p) => !p.allIn)
@@ -100,7 +109,7 @@ function dealRiver(state) {
   state.street = 'river'
 }
 
-function goToShowdown(state) {
+export function goToShowdown(state) {
   state.street = 'showdown'
   state.toAct = null
   awardPotsAtShowdown(state)

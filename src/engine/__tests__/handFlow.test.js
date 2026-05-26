@@ -126,9 +126,9 @@ describe('full hand integration', () => {
     startHand(s)
     expect(s.players[1].eliminated).toBe(true)
     // Only p0 and p2 are active — should be heads-up.
-    expect(s.players[0].holeCards).toHaveLength(2)
-    expect(s.players[2].holeCards).toHaveLength(2)
-    expect(s.players[1].holeCards).toHaveLength(0)
+    expect(s.players[0].cards).toHaveLength(2)
+    expect(s.players[2].cards).toHaveLength(2)
+    expect(s.players[1].cards).toHaveLength(0)
   })
 
   it('tournamentComplete when only one non-eliminated player remains', () => {

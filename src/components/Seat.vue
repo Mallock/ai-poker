@@ -21,7 +21,35 @@ const props = defineProps({
 
 const portraitError = ref(false)
 const portraitUrl = computed(() => `/portraits/${props.player.characterId ?? 'human'}.png`)
-const displayedHole = computed(() => props.player.holeCards ?? [null, null])
+
+// Build the displayed card row from the new `cards: [{ card, visibility }]` shape.
+// For opponents: private cards are face-down (null), public cards are face-up.
+// For the human (or at showdown): all cards are face-up.
+const displayedCards = computed(() => {
+  const cards = props.player.cards
+  if (!Array.isArray(cards) || cards.length === 0) {
+    // Hold'em-style placeholder for in-progress hands before deal: two face-downs.
+    return [
+      { face: null, visibility: 'private' },
+      { face: null, visibility: 'private' },
+    ]
+  }
+  return cards.map((c) => ({
+    face: c.card,
+    visibility: c.visibility,
+  }))
+})
+
+const reveal = computed(() => props.showHoleCards || props.isHuman)
+
+// Folded opponents keep their face-up cards visible (standard for stud — folded upcards are
+// public information). Folded Hold'em players have no public cards, so the row disappears.
+const shownCards = computed(() => {
+  if (props.player.folded && !props.isHuman) {
+    return displayedCards.value.filter((c) => c.visibility === 'public')
+  }
+  return displayedCards.value
+})
 
 const ui = useUiStore()
 const ai = useAiStore()
@@ -134,13 +162,14 @@ const thinkPreview = computed(() => {
       </div>
     </div>
 
-    <div v-if="!player.folded && !player.eliminated" class="flex gap-1.5">
+    <div v-if="!player.eliminated && shownCards.length > 0" class="flex gap-1.5">
       <Card
-        v-for="(c, i) in displayedHole"
-        :key="c ? `${player.id}-${c}` : `${player.id}-hole-${i}`"
-        :card="showHoleCards || isHuman ? c : null"
-        :face-down="!(showHoleCards || isHuman)"
+        v-for="(c, i) in shownCards"
+        :key="c.face ? `${player.id}-${c.face}-${i}` : `${player.id}-hole-${i}`"
+        :card="c.visibility === 'public' ? c.face : (reveal ? c.face : null)"
+        :face-down="c.visibility === 'private' && !reveal"
         :size="isHuman ? 'lg' : 'md'"
+        :class="isHuman && c.visibility === 'private' ? 'tilt-down' : ''"
         :style="{ '--deal-delay': `${i * 100}ms` }"
       />
     </div>
@@ -192,6 +221,10 @@ const thinkPreview = computed(() => {
     inset 0 1px 0 oklch(1 0 0 / 0.8),
     inset 0 -1px 0 oklch(0.55 0.02 70 / 0.5),
     0 2px 4px oklch(0 0 0 / 0.5);
+}
+.tilt-down {
+  transform: rotate(-3deg);
+  filter: brightness(0.92);
 }
 .reasoning-bubble {
   background: linear-gradient(180deg, oklch(0.18 0.025 40 / 0.92), oklch(0.12 0.018 35 / 0.92));

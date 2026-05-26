@@ -17,7 +17,12 @@ const props = defineProps({
     }),
   },
   disabled: { type: Boolean, default: false },
+  // 'no-limit' (default) renders the slider/number raise control; 'fixed-limit' renders a
+  // single fixed-amount button.
+  limitStructure: { type: String, default: 'no-limit' },
 })
+
+const isFixedLimit = computed(() => props.limitStructure === 'fixed-limit')
 const emit = defineEmits(['action'])
 
 const raiseAmount = ref(props.legalActions.minRaise || 0)
@@ -73,7 +78,18 @@ function pctRaise(p) {
       </span>
     </button>
 
-    <div class="flex items-center gap-2 rounded-md bg-[oklch(0.20_0.025_45/0.7)] px-3 py-1.5 ring-1 ring-[oklch(0.32_0.035_50/0.7)]">
+    <button
+      v-if="isFixedLimit"
+      class="btn btn-raise"
+      :disabled="disabled || !legalActions.canRaise"
+      @click="submit('raise', legalActions.minRaise)"
+    >
+      Raise
+      <span v-if="legalActions.canRaise" class="num-tab ml-1.5 text-[11px] opacity-90">
+        to {{ legalActions.minRaise.toLocaleString() }}
+      </span>
+    </button>
+    <div v-else class="flex items-center gap-2 rounded-md bg-[oklch(0.20_0.025_45/0.7)] px-3 py-1.5 ring-1 ring-[oklch(0.32_0.035_50/0.7)]">
       <div class="flex gap-1">
         <button class="chip-btn" :disabled="disabled || !legalActions.canRaise" @click="pctRaise(0.25)">¼</button>
         <button class="chip-btn" :disabled="disabled || !legalActions.canRaise" @click="pctRaise(0.5)">½</button>

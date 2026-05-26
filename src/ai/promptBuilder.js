@@ -1,5 +1,5 @@
 import { chattinessDescriptor } from './characters.js'
-import { describeHandStrength, describePreflopHand } from './handStrength.js'
+import { describeHandStrength, describePreflopHand, describeStudHand } from './handStrength.js'
 
 // Build the chat-completion messages array for one AI turn.
 // Inputs:
@@ -11,7 +11,8 @@ import { describeHandStrength, describePreflopHand } from './handStrength.js'
 //             this with the character's tiltProfile to colour its voice.
 
 export function buildPrompt({ view, character, handHistoryNote = '', moodNote = '', memory = '' }) {
-  const system = buildSystemMessage(character, moodNote, memory)
+  const gameType = view?.gameType ?? 'holdem'
+  const system = buildSystemMessage(character, moodNote, memory, gameType)
   const user = buildUserMessage(view, handHistoryNote)
   return [
     { role: 'system', content: system },
@@ -32,13 +33,14 @@ export function buildRetryPrompt({ view, character, badReply, moodNote = '', mem
   return base
 }
 
-function buildSystemMessage(character, moodNote, memory) {
-  const archetypeLabel = character.archetype ? `, "${character.archetype}"` : ''
-  const lines = []
+function pickPlayStyle(character, gameType) {
+  if (!character?.playStyle) return null
+  if (typeof character.playStyle === 'string') return character.playStyle
+  return character.playStyle[gameType] ?? character.playStyle.holdem ?? null
+}
 
-  // 1. The poker brain. This comes FIRST so the model treats decisions as the
-  //    primary task and persona as flavor on top, not the other way around.
-  lines.push(`You are a real poker player at a Texas Hold'em table. You decide your action like a winning live cash player who has played thousands of hands.
+function buildHoldemStrategy() {
+  return `You are a real poker player at a Texas Hold'em table. You decide your action like a winning live cash player who has played thousands of hands.
 
 You think in RANGES, POSITION, BOARD TEXTURE, stack-to-pot ratio (SPR), and OPPONENT TENDENCIES — not "do I have a pair?". Cards are inputs; the action that maximizes long-run chips is the output. Every spot is +EV vs -EV, never "safe" vs "risky." Risky-looking aggressive lines are usually the +EV ones.
 
@@ -106,20 +108,80 @@ Specific leaks of weak players — DO NOT do these:
 
 8. **Pot-committed math.** If you've put in ~30%+ of your effective stack, you almost never fold the rest. Don't barrel 60% of your chips and then fold to a shove.
 
-Polarize big bets: overbets and all-ins are the nuts or air, rarely thin value. Use small sizings for thin value, big sizings polarized (value + bluffs).
+Polarize big bets: overbets and all-ins are the nuts or air, rarely thin value. Use small sizings for thin value, big sizings polarized (value + bluffs).`
+}
 
-=== HOW YOUR CHARACTER FITS IN ===
+function buildStudStrategy() {
+  return `You are a real poker player at a fixed-limit 7 Card Stud table. You decide your action like a seasoned cardroom regular who has logged thousands of stud hands.
 
-You play under a specific character (defined below). The character's playStyle is your **default frequency dial** for the fundamentals above — not a reason to ignore them. Character flavor mostly affects POSTFLOP aggression and 3-bet frequency. **No character preflop-shoves 100bb with A-rag, A-low offsuit, or weak suited stuff against a raise — that is the model breaking character, not playing it.** "Maniac" preflop means slightly wider opens and a few more light 3-bets, not stacking off with napkin holdings.
+You think in 3RD-STREET STARTING HANDS, LIVE CARDS, BOARD STRENGTH (your visible upcards vs theirs), and POT ODDS — not "is this a good hand?". The fixed-limit structure forces a different rhythm than no-limit: small fixed raises mean calling is correct far more often, but stacking off in one street is impossible. Edge comes from making correct marginal decisions, hand after hand.
 
-- A "loose-aggressive" / "LAG" / "maniac" / "aggressive 3-bet artist" character opens wider from late position, three-bets ~1.5–2x as often as a TAG (especially as a bluff with suited blockers), c-bets at the HIGH end of the range, double-barrels more often, runs more river bluffs. They turn the aggression dial UP — but they still fold dominated junk to a 3-bet, and they still fold to a 4-bet shove without a premium.
-- A "tight-aggressive" / "TAG" / "GTO solver" character plays the ranges above as written, c-bets near the textbook frequency (~65% of flops as PFR), value-bets and bluffs in balance, makes few but precise herocalls. They turn the aggression dial to "balanced." They are NOT passive.
-- A "tight-passive" / "trap" / "observant exploiter" character bets thinner for value when they have it (sets, two pair, strong overpairs), traps with disguised monsters, and check-raises rather than donk-leads — but they STILL c-bet flops with their c-bet range and value-bet their value range. "Passive" in their description means they prefer trap lines, not that they fold equity. They open tighter than the LAG, 3-bet less, and fold marginal stuff preflop.
-- An "erratic" / "wild card" character mixes aggressive and unexpected lines, makes more hero calls and stab bluffs. They turn the dial UP and add variance — but the variance is in sizing and frequency, not in turning unplayable hands into all-in calls.
+=== 3RD-STREET FUNDAMENTALS — STARTING-HAND DISCIPLINE ===
 
-**Voice ≠ action.** Your character's voice, sample lines, and catchphrases ("Reckon I gotta see it", "Call.", "Mm.") shape WHAT YOU SAY in the "say" field. They do NOT determine your action. A laconic cowboy still c-bets. A quiet stoic still double-barrels. A polite belle still raises top pair. Never let the "voice" register make you check or fold when the spot calls for a bet.
+On 3rd street you have two private cards and one upcard. The bring-in is forced; you can fold to it, call/complete, or raise. Your starting hand structure determines which.
 
-Tilt and mood color frequencies (a tilted player bluffs more and value-bets thinner; a tilt-proof stoic plays closer to GTO), but neither one check-folds the flop with an overpair.
+**Premium starters (raise / re-raise the bring-in for value):**
+- **Rolled-up trips** (all three cards the same rank). The strongest possible start. Slow-play or raise depending on board — usually raise so opponents pay to draw.
+- **Big pair** (TT–AA), especially split (one in the hole, one up) with a high kicker. Raise for value, isolate.
+- **Three to a straight flush** (e.g., 8h 9h Th) — premium drawing hand, raise to build a pot.
+
+**Strong starters (call or raise, depending on action):**
+- **Medium pair** (77–99), preferably with live cards (none of your rank exposed on opponents' boards).
+- **Three-flush** (three cards of one suit) — playable as a draw; better when high-suited and live.
+- **Three-straight, no gap** (e.g., 6-7-8) with all three ranks live.
+- **Three high cards** (broadway) like K-Q-J with live cards and no raise behind you.
+
+**Marginal / fold to a raise:**
+- Small pair without live kicker.
+- Three-straight with gaps or dead cards.
+- High-card-only hands when an opponent's upcard is higher than yours.
+- The bring-in itself (lowest upcard) — fold to a raise unless your downcards make a real hand.
+
+**LIVE CARDS PRINCIPLE — this is the single most important stud concept.** Before calling on 3rd, scan every opponent's upcard (and any cards folded with their upcards face-up — those are dead). Count how many of your needed ranks remain. A pair of jacks with both remaining jacks visible on opponents' boards is essentially dead; the same pair when no jacks are exposed is much stronger. The pre-computed live-cards note in the YOUR HAND block does this counting for you — TRUST it.
+
+=== BIG-BET UNLOCK AND THE PAIRED-BOARD RULE ===
+
+On 4th street, if ANY live player shows a pair on their two upcards, the big bet is unlocked for that street — every player has the option to bet the big amount. On 5th street and later, the big bet is unlocked unconditionally. When the big bet is unlocked and you have a real hand, RAISE — fixed limits reward value extraction.
+
+=== 4TH–6TH STREET — READ THE BOARDS ===
+
+Each new upcard tells you what opponents could plausibly have. A player whose upcards show K-K-7 has at minimum a pair of kings (with the buried possibility of trips or two pair). A board showing three to a flush is threatening; three to a straight similarly. When your hand is best AND the big bet is unlocked, raise. When your hand is behind a likely made hand and you don't have a strong draw, fold — there will be more hands.
+
+**When to raise on 5th or 6th street:**
+- You have a strong made hand (two pair or better) and your board doesn't scream it.
+- You have a strong draw (four to a flush, four to an open-ended straight) with mostly live cards.
+- Your board looks scarier than your actual hand AND opponents are weak — a board bluff with the right cards can win the pot, especially against tight players. Don't rely on this without good reason.
+
+=== FIXED-LIMIT POT ODDS — CALLING IS CORRECT MORE OFTEN ===
+
+In fixed limit, the bet you face is always a known small or big bet. After 4th street the pot is usually big relative to the bet — pot odds of 4:1, 5:1, or more are common on later streets. This means you need only ~17–20% equity to call profitably. **Folding to a single bet on 5th–7th street when the pot is large is rarely correct** — even a 4-card straight draw against an exposed pair has enough equity to call. Discount your outs by the LIVE CARDS reading: 9 outs to a flush become 6 if three of your suit are dead.
+
+Conversely, you cannot bluff opponents off marginal pairs cheaply — they will call with any pair for one bet. Save bluffs for spots where your board genuinely scares villain off and you have at least some equity if called.
+
+=== HAND-1 SANITY CHECK (NEW TABLE, NO READS) ===
+
+Assume opponents have ranges roughly like the ones above until proven otherwise. Stud is a game of slow adjustments — over an orbit you'll learn who plays the bring-in tight and who completes with junk. Until then, play textbook starting hands and rely on live-cards reads, not on imagined opponent leaks.`
+}
+
+function buildSystemMessage(character, moodNote, memory, gameType) {
+  const archetypeLabel = character.archetype ? `, "${character.archetype}"` : ''
+  const lines = []
+
+  // 1. The poker brain. Picked per game type so the model treats decisions as the
+  //    primary task and persona as flavor on top, not the other way around.
+  if (gameType === 'stud') {
+    lines.push(buildStudStrategy())
+  } else {
+    lines.push(buildHoldemStrategy())
+  }
+
+  lines.push(`=== HOW YOUR CHARACTER FITS IN ===
+
+You play under a specific character (defined below). The character's playStyle is your **default frequency dial** for the fundamentals above — not a reason to ignore them. Character flavor mostly affects POSTFLOP / POST-3RD aggression and entry frequency. **No character spews chips against premium starting hands or jams every street in fixed limit just because they're a "maniac" — that is the model breaking character, not playing it.**
+
+**Voice ≠ action.** Your character's voice, sample lines, and catchphrases shape WHAT YOU SAY in the "say" field. They do NOT determine your action. A laconic cowboy still raises with rolled-up trips. A quiet stoic still bets the unlocked big bet. Never let the "voice" register make you check or fold when the spot calls for a bet.
+
+Tilt and mood color frequencies (a tilted player bluffs more and value-bets thinner; a tilt-proof stoic plays closer to GTO), but neither one folds a clear value hand on later streets.
 
 === YOUR CHARACTER ===
 
@@ -127,7 +189,8 @@ Name: ${character.name}${archetypeLabel}`)
 
   if (character.personality) lines.push(`Personality: ${character.personality}`)
   if (character.backstory) lines.push(`Backstory: ${character.backstory}`)
-  if (character.playStyle) lines.push(`Play style (your default frequency dial — read the section above on how this maps to action): ${character.playStyle}`)
+  const playStyle = pickPlayStyle(character, gameType)
+  if (playStyle) lines.push(`Play style (your default frequency dial — read the section above on how this maps to action): ${playStyle}`)
   if (character.voice) lines.push(`Voice (this shapes your "say" line, NOT your action): ${character.voice}`)
   if (character.tells) lines.push(`Your tells (keep these in mind, never reveal them): ${character.tells}`)
   if (character.tiltProfile) lines.push(`How you react to losing: ${character.tiltProfile}`)
@@ -234,14 +297,6 @@ function computePositions(view) {
 // Standard cash/tournament position names by table size. Index 0 is the earliest seat
 // after BB; the last entry is the seat just before BTN.
 function positionLabelsForMiddle(k) {
-  // n=3 (k=0): no middle seats
-  // n=4 (k=1): UTG
-  // n=5 (k=2): UTG, CO
-  // n=6 (k=3): UTG, MP, CO        (6-max standard)
-  // n=7 (k=4): UTG, MP, HJ, CO
-  // n=8 (k=5): UTG, UTG+1, MP, HJ, CO
-  // n=9 (k=6): UTG, UTG+1, MP, MP+1, HJ, CO
-  // n=10 (k=7): UTG, UTG+1, UTG+2, MP, MP+1, HJ, CO
   const table = {
     0: [],
     1: ['UTG'],
@@ -271,14 +326,10 @@ function orderFromToAct(view, byId) {
     const p = all[(startIdx + i) % all.length]
     if (!p.folded && !p.allIn) ordered.push(p)
   }
-  // Filter through byId to keep only the "live for this street" set, preserving order.
   return ordered.filter((p) => byId.has(p.id))
 }
 
-// Render a card as "Jh" instead of "JH" — lowercase suits are easier for the LLM to parse
-// and match pokersolver's own format ("Wait, does JH mean Jack of Hearts?" was a real
-// Kenji failure). Accepts any string already in either format; falls back to the raw card
-// for anything unrecognized.
+// Render a card as "Jh" instead of "JH" — lowercase suits are easier for the LLM to parse.
 function fmtCard(card) {
   if (typeof card !== 'string' || card.length < 2) return String(card ?? '')
   const rank = card.slice(0, -1).toUpperCase()
@@ -289,7 +340,33 @@ function fmtCards(cards) {
   return (cards ?? []).map(fmtCard).join(' ')
 }
 
+function viewHoleCards(view) {
+  if (!view?.self) return []
+  if (Array.isArray(view.self.cards)) {
+    return view.self.cards.filter((c) => c.visibility === 'private').map((c) => c.card)
+  }
+  // Back-compat with synthetic test views that still set holeCards directly.
+  if (Array.isArray(view.self.holeCards)) return [...view.self.holeCards]
+  return []
+}
+
+function viewUpCards(view) {
+  if (!view?.self) return []
+  if (Array.isArray(view.self.cards)) {
+    return view.self.cards.filter((c) => c.visibility === 'public').map((c) => c.card)
+  }
+  return []
+}
+
 function buildUserMessage(view, handHistoryNote) {
+  const gameType = view.gameType ?? 'holdem'
+  if (gameType === 'stud') {
+    return buildStudUserMessage(view, handHistoryNote)
+  }
+  return buildHoldemUserMessage(view, handHistoryNote)
+}
+
+function buildHoldemUserMessage(view, handHistoryNote) {
   const positions = computePositions(view)
 
   const oppLines = view.opponents.map((o) => {
@@ -302,9 +379,6 @@ function buildUserMessage(view, handHistoryNote) {
     return `  - ${opponentLabel(o)} (seat ${o.seatIndex})${tags ? ' ' + tags : ''} — stack ${o.stack}, currentBet ${o.currentBet}, totalThisHand ${o.totalContributed}`
   }).join('\n')
 
-  // Live players still in this hand, in action order starting from the player to-act. The
-  // OPPONENTS section above is full reference; this is a focused "who can still bet" list so
-  // the AI doesn't have to mentally filter folded seats every turn.
   const allLive = [view.self, ...view.opponents]
     .filter((p) => !p.eliminated && !p.folded)
   const byId = new Map(allLive.map((p) => [p.id, p]))
@@ -319,9 +393,6 @@ function buildUserMessage(view, handHistoryNote) {
     })
     .join('\n')
 
-  // Action order for the current street, starting with the player to-act and walking forward
-  // around the table among players who are still alive, not folded, not all-in. Highlights
-  // who has already acted this street (from actionHistory) so the model doesn't re-derive it.
   const orderedLive = orderFromToAct(view, byId)
   const actedThisStreet = new Set(
     view.actionHistory
@@ -338,8 +409,6 @@ function buildUserMessage(view, handHistoryNote) {
       }).join(' → ')
     : '(no live players)'
 
-  // Synthesize blind-post entries at the top of action history — the engine doesn't record them,
-  // but they're load-bearing context for the LLM to understand the current bet picture.
   const sbId = Object.keys(positions).find((id) => positions[id] === 'SB' || positions[id] === 'BTN/SB')
   const bbId = Object.keys(positions).find((id) => positions[id] === 'BB')
   const blindEntries = []
@@ -351,7 +420,7 @@ function buildUserMessage(view, handHistoryNote) {
   }
 
   const actionEntries = view.actionHistory
-    .filter((a) => a.handNumber === view.handNumber) // current hand only
+    .filter((a) => a.handNumber === view.handNumber)
     .map((a) => {
       const who = historyName(view, findPlayer(view, a.playerId))
       const amt = a.amount ? ` ${a.amount}` : ''
@@ -369,9 +438,6 @@ function buildUserMessage(view, handHistoryNote) {
     la.canAllIn && `all-in (${la.allInAmount} chips)`,
   ].filter(Boolean).join(', ')
 
-  // Pot odds when there's a bet to call. Pot odds = call / (current pot + call). Express both
-  // as ratio (e.g. "1.7:1") and required equity ("~37%"). When canCheck and no bet to call,
-  // skip this line — pot odds are meaningless.
   let potOddsLine = ''
   if (la.canCall && la.callAmount > 0) {
     const callAmount = la.callAmount
@@ -387,9 +453,6 @@ function buildUserMessage(view, handHistoryNote) {
     : 'Dealer button: (unknown)'
   const selfPos = positions[view.self.id] ? ` — position ${positions[view.self.id]}` : ''
 
-  // Effective stack vs the smallest non-eliminated, non-all-in opponent. This is the
-  // amount that actually matters preflop — at 100bb deep, a 100bb shove is a different
-  // beast from a 20bb shove, and the AI needs to see that.
   const bb = view.blinds.bigBlind || 1
   const liveOpps = view.opponents.filter((o) => !o.eliminated && !o.folded)
   const oppStacks = liveOpps.map((o) => o.stack + o.currentBet)
@@ -400,16 +463,13 @@ function buildUserMessage(view, handHistoryNote) {
   const effectiveBb = (effectiveChips / bb).toFixed(1).replace(/\.0$/, '')
   const stackLine = `Effective stack vs the smallest live opponent: ~${effectiveBb}bb (you have ${view.self.stack}, BB=${bb}). Deeper = play tighter preflop; shallower = wider/jam more.`
 
-  // Pre-compute the current 5-card made hand (postflop only). LLMs are unreliable at noticing
-  // when the board pairs one of their hole cards into trips, or when a board card completes a
-  // straight, so we hand them the answer.
-  const strength = describeHandStrength(view.self.holeCards, view.communityCards)
+  const holeCards = viewHoleCards(view)
+  const strength = describeHandStrength(holeCards, view.communityCards)
   const strengthLines = []
   if (strength?.made) {
     strengthLines.push(`Your current made hand (computed for you — TRUST this, do not re-derive): ${strength.made.descr} [${strength.made.name}].`)
   } else {
-    // Preflop: surface a one-line hand-type read so the model doesn't misread suited vs offsuit.
-    const preflop = describePreflopHand(view.self.holeCards)
+    const preflop = describePreflopHand(holeCards)
     if (preflop) strengthLines.push(`Hand type (computed for you — TRUST this, do not re-derive): ${preflop}.`)
   }
   if (strength?.draws?.length) {
@@ -417,12 +477,6 @@ function buildUserMessage(view, handHistoryNote) {
   }
   const strengthBlock = strengthLines.length ? '\n' + strengthLines.join('\n') : ''
 
-  // Chat is split into two blocks:
-  //   1. Lines YOU have already said — prominent "do not repeat" warning. Pull the speaker's
-  //      OWN last 6 lines from the full chat log (not just the recent window), so callbacks
-  //      to lines from many hands ago still get suppressed.
-  //   2. Lines OTHERS have said recently — last ~12 entries from the rolling window.
-  // This is the single biggest fix for the "Vera said 'Hungry, Clyde?' twice" failure mode.
   const allChat = view.tableChat ?? []
   const ownChat = allChat.filter((c) => c.playerId === view.self.id).slice(-6)
   const otherChat = allChat.filter((c) => c.playerId !== view.self.id).slice(-12)
@@ -454,7 +508,7 @@ Card format note: cards are shown as <rank><suit-letter> with suit lowercase —
 ${handHistoryNote ? handHistoryNote + '\n' : ''}
 === YOUR HAND ===
 You are ${view.self.name} in seat ${view.self.seatIndex}${selfPos}.
-Hole cards: ${fmtCards(view.self.holeCards)}
+Hole cards: ${fmtCards(holeCards)}
 Your stack: ${view.self.stack}
 Your current bet this street: ${view.self.currentBet}
 Your total committed this hand: ${view.self.totalContributed}
@@ -479,13 +533,153 @@ ${legalSummary}${potOddsLine}
 It is YOUR turn. Decide your action and respond with the JSON object as specified.`
 }
 
+function buildStudUserMessage(view, handHistoryNote) {
+  const oppLines = view.opponents.map((o) => {
+    const status = o.eliminated ? '[OUT]'
+      : o.folded ? '[FOLDED]'
+      : o.allIn ? '[ALL-IN]'
+      : ''
+    const bringIn = o.isBringIn ? '[BRING-IN]' : ''
+    const tags = [status, bringIn].filter(Boolean).join(' ')
+    const ups = (o.upCards ?? []).length ? `upcards ${fmtCards(o.upCards)}` : 'upcards (none yet)'
+    return `  - ${opponentLabel(o)} (seat ${o.seatIndex})${tags ? ' ' + tags : ''} — stack ${o.stack}, currentBet ${o.currentBet}, totalThisHand ${o.totalContributed} — ${ups}`
+  }).join('\n')
+
+  const allLive = [view.self, ...view.opponents]
+    .filter((p) => !p.eliminated && !p.folded)
+  const byId = new Map(allLive.map((p) => [p.id, p]))
+  const orderedLive = orderFromToAct(view, byId)
+  const actedThisStreet = new Set(
+    view.actionHistory
+      .filter((a) => a.handNumber === view.handNumber && a.street === view.street && a.action !== 'award')
+      .map((a) => a.playerId),
+  )
+  const orderLine = orderedLive.length
+    ? orderedLive.map((p) => {
+        const isYou = p.id === view.self.id
+        const name = isYou ? `You (${p.name})` : p.name
+        const acted = actedThisStreet.has(p.id) ? ' ✓ acted' : ''
+        return `${name}${acted}`
+      }).join(' → ')
+    : '(no live players)'
+
+  const actionEntries = view.actionHistory
+    .filter((a) => a.handNumber === view.handNumber)
+    .map((a) => {
+      const who = historyName(view, findPlayer(view, a.playerId))
+      const amt = a.amount ? ` ${a.amount}` : ''
+      return `  - [${a.street}] ${who}: ${a.action}${amt}`
+    })
+  const historyLines = actionEntries.length
+    ? actionEntries.join('\n')
+    : '  (no actions yet this hand)'
+
+  const la = view.legalActions
+  const legalSummary = [
+    la.canFold && 'fold',
+    la.canCheck && 'check',
+    la.canCall && `call (${la.callAmount} to call)`,
+    la.canRaise && `raise to ${la.minRaise} (fixed limit — sizing is forced)`,
+    la.canAllIn && `all-in (${la.allInAmount} chips)`,
+  ].filter(Boolean).join(', ')
+
+  let potOddsLine = ''
+  if (la.canCall && la.callAmount > 0) {
+    const callAmount = la.callAmount
+    const potAfterCall = view.potTotal + callAmount
+    const ratio = (view.potTotal / callAmount).toFixed(1).replace(/\.0$/, '')
+    const equityNeeded = Math.round((callAmount / potAfterCall) * 100)
+    potOddsLine = `\nPot odds to call ${callAmount}: ${ratio}:1 (pot ${view.potTotal} → calling wins a total pot of ${potAfterCall}). Need ~${equityNeeded}% equity to break even.`
+  }
+
+  const limits = view.limits
+    ? `ante ${view.limits.ante}, bring-in ${view.limits.bringIn}, small bet ${view.limits.smallBet}, big bet ${view.limits.bigBet}`
+    : '(limits unknown)'
+  const bigBet = view.bigBetUnlocked ? 'big bet UNLOCKED' : 'small bet active'
+
+  const opponentUpCards = view.opponents.map((o) => o.upCards ?? [])
+  const stud = describeStudHand({
+    selfCards: view.self.cards ?? [],
+    communityCards: view.communityCards,
+    opponentUpCards,
+  })
+  const studLines = []
+  if (stud?.made) {
+    studLines.push(`Made hand (computed for you — TRUST this): ${stud.made.descr} [${stud.made.name}].`)
+  }
+  if (stud?.structure) {
+    studLines.push(`Starting structure (3rd street): ${stud.structure}.`)
+  }
+  if (stud?.liveNote) {
+    studLines.push(`Live cards: ${stud.liveNote}.`)
+  }
+  const strengthBlock = studLines.length ? '\n' + studLines.join('\n') : ''
+
+  const allChat = view.tableChat ?? []
+  const ownChat = allChat.filter((c) => c.playerId === view.self.id).slice(-6)
+  const otherChat = allChat.filter((c) => c.playerId !== view.self.id).slice(-12)
+
+  const ownBlock = ownChat.length === 0 ? '' : `\n=== LINES YOU HAVE ALREADY SAID (DO NOT REPEAT OR PARAPHRASE) ===
+These are things YOU said earlier this session. Do not say any of them again. Do not paraphrase them. Do not reuse their sentence structure. If you can't think of a fresh line, set "say": null.
+${ownChat.map((c) => {
+  const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
+  return `  - [${hand} ${c.street ?? ''}] "${c.text}"`
+}).join('\n')}\n`
+
+  const othersBlock = otherChat.length === 0 ? '' : `\n=== RECENT TABLE CHAT (lines from OTHER players — everyone at the table heard these) ===
+${otherChat.map((c) => {
+  const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
+  return `  - [${hand} ${c.street ?? ''}] ${c.name}: ${c.text}`
+}).join('\n')}\n`
+
+  const chatBlock = ownBlock + othersBlock
+
+  const selfCards = view.self.cards ?? []
+  const ownPrivate = selfCards.filter((c) => c.visibility === 'private').map((c) => c.card)
+  const ownPublic = selfCards.filter((c) => c.visibility === 'public').map((c) => c.card)
+
+  const communityLine = view.communityCards.length
+    ? `Community card (deck shortage): ${fmtCards(view.communityCards)}`
+    : 'Community cards: (none in stud unless deck runs short)'
+
+  return `
+=== TABLE STATE ===
+Hand #${view.handNumber}, 7 Card Stud, street: ${view.street}
+Limits: ${limits} — ${bigBet}
+${communityLine}
+Pot total: ${view.potTotal}
+Current bet to match: ${view.currentBet}
+Card format note: cards are shown as <rank><suit-letter> with suit lowercase — h=hearts, d=diamonds, c=clubs, s=spades.
+${handHistoryNote ? handHistoryNote + '\n' : ''}
+=== YOUR HAND ===
+You are ${view.self.name} in seat ${view.self.seatIndex}.
+Down cards (private): ${fmtCards(ownPrivate)}
+Up cards (public, opponents can see): ${ownPublic.length ? fmtCards(ownPublic) : '(none yet)'}
+Your stack: ${view.self.stack}
+Your current bet this street: ${view.self.currentBet}
+Your total committed this hand: ${view.self.totalContributed}${strengthBlock}
+
+=== ACTION ORDER THIS STREET ===
+Acting now → next → ... (✓ = already acted this street)
+${orderLine}
+
+=== OPPONENTS (full table, in seat order — read their upcards) ===
+${oppLines}
+
+=== ACTION HISTORY (this hand) ===
+${historyLines}
+${chatBlock}
+=== YOUR LEGAL ACTIONS ===
+${legalSummary}${potOddsLine}
+
+It is YOUR turn. Decide your action and respond with the JSON object as specified.`
+}
+
 // Pull the JSON object out of the (post-think) content buffer. Returns the parsed object or
 // throws on failure.
 export function parseActionJson(raw) {
   const trimmed = (raw || '').trim()
-  // Strip ```json fences if present.
   const unfenced = trimmed.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
-  // Find the first {...} block.
   const start = unfenced.indexOf('{')
   const end = unfenced.lastIndexOf('}')
   if (start < 0 || end <= start) {

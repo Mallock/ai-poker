@@ -323,17 +323,29 @@ const winnerSummary = computed(() => {
         <div class="pointer-events-none absolute inset-[4.5%] rounded-[80px] ring-1 ring-[oklch(0.30_0.05_65/0.6)]"></div>
       </div>
 
-      <!-- Centre of felt: community cards + pot (the visual focal point) -->
+      <!-- Centre of felt: community cards + pot (the visual focal point). For stud, the
+           community-card row is suppressed unless the engine has dealt a single fallback
+           card on 7th street (deck-shortage). -->
       <div class="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-3">
         <div v-if="state.handNumber" class="font-display text-[11px] uppercase italic tracking-[0.3em] text-[oklch(0.68_0.06_82/0.7)]">
           Hand №{{ state.handNumber }}
         </div>
-        <div class="flex gap-2.5">
+        <div v-if="state.gameType !== 'stud'" class="flex gap-2.5">
           <Card
             v-for="(c, i) in state.communityCards.concat(Array(5 - state.communityCards.length).fill(null))"
             :key="c ? `${state.handNumber}-${c}` : `slot-${i}`"
             :card="c"
             :face-down="!c"
+            size="lg"
+            :style="{ '--deal-delay': `${i * 90}ms` }"
+          />
+        </div>
+        <div v-else-if="state.communityCards.length > 0" class="flex gap-2.5">
+          <Card
+            v-for="(c, i) in state.communityCards"
+            :key="`${state.handNumber}-community-${c}`"
+            :card="c"
+            :face-down="false"
             size="lg"
             :style="{ '--deal-delay': `${i * 90}ms` }"
           />
@@ -455,6 +467,7 @@ const winnerSummary = computed(() => {
       />
       <ActionControls
         :legal-actions="legalActions"
+        :limit-structure="state.limitStructure ?? 'no-limit'"
         :disabled="!humanIsActive"
         @action="emit('action', $event)"
       />

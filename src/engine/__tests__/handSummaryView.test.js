@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createInitialState, startHand } from '../state.js'
+import { createInitialState, startHand, getHoleCards } from '../state.js'
 import { applyAction } from '../betting.js'
 import { getHandSummaryView } from '../view.js'
 
@@ -17,28 +17,26 @@ function playToShowdownCheckAround(state) {
 }
 
 describe('getHandSummaryView', () => {
-  it('hides folded opponents\' hole cards even when others reached showdown', () => {
+  it('hides folded opponents\' cards even when others reached showdown', () => {
     // 3-handed: p0 folds preflop, p1 and p2 go to showdown.
     const s = createInitialState({ seats: makeSeats(3), startingStack: 1000, rngSeed: 7 })
     startHand(s)
-    // toAct is p0 (button = UTG in 3-handed)
     applyAction(s, 'p0', { action: 'fold' })
-    // Now p1 (SB) and p2 (BB). p1 acts. Limp + check + check around to showdown.
     applyAction(s, 'p1', { action: 'call' })
     applyAction(s, 'p2', { action: 'check' })
     while (s.street !== 'handComplete') {
       applyAction(s, s.toAct, { action: 'check' })
     }
 
-    // p1 watches the hand back.
     const view = getHandSummaryView(s, 'p1')
     expect(view.wentToShowdown).toBe(true)
     const folded = view.opponents.find((o) => o.id === 'p0')
     expect(folded.folded).toBe(true)
+    expect(Object.prototype.hasOwnProperty.call(folded, 'cards')).toBe(false)
     expect(Object.prototype.hasOwnProperty.call(folded, 'holeCards')).toBe(false)
   })
 
-  it('reveals showdown opponents\' hole cards', () => {
+  it('reveals showdown opponents\' cards', () => {
     const s = createInitialState({ seats: makeSeats(2), startingStack: 1000, rngSeed: 3 })
     startHand(s)
     playToShowdownCheckAround(s)
@@ -47,13 +45,12 @@ describe('getHandSummaryView', () => {
     const view = getHandSummaryView(s, 'p0')
     expect(view.wentToShowdown).toBe(true)
     const opp = view.opponents.find((o) => o.id === 'p1')
-    expect(opp.holeCards).toBeDefined()
-    expect(opp.holeCards).toHaveLength(2)
-    expect(opp.holeCards).toEqual(s.players[1].holeCards)
+    expect(opp.cards).toBeDefined()
+    expect(opp.cards).toHaveLength(2)
+    expect(opp.cards.map((c) => c.card)).toEqual(getHoleCards(s.players[1]))
   })
 
-  it('hides everyone\'s hole cards on an uncontested fold-around', () => {
-    // 3-handed: p0 folds, p1 folds, p2 wins uncontested with no showdown.
+  it('hides everyone\'s cards on an uncontested fold-around', () => {
     const s = createInitialState({ seats: makeSeats(3), startingStack: 1000, rngSeed: 9 })
     startHand(s)
     applyAction(s, 'p0', { action: 'fold' })
@@ -63,6 +60,7 @@ describe('getHandSummaryView', () => {
     const view = getHandSummaryView(s, 'p0')
     expect(view.wentToShowdown).toBe(false)
     for (const opp of view.opponents) {
+      expect(Object.prototype.hasOwnProperty.call(opp, 'cards')).toBe(false)
       expect(Object.prototype.hasOwnProperty.call(opp, 'holeCards')).toBe(false)
     }
   })
@@ -74,7 +72,7 @@ describe('getHandSummaryView', () => {
     const view = getHandSummaryView(s, 'p0')
 
     const allowedTop = new Set([
-      'handNumber', 'blinds', 'dealerId', 'communityCards', 'wentToShowdown',
+      'gameType', 'handNumber', 'blinds', 'dealerId', 'communityCards', 'wentToShowdown',
       'self', 'opponents', 'actionHistory', 'potOutcomes',
     ])
     for (const key of Object.keys(view)) {
@@ -82,14 +80,14 @@ describe('getHandSummaryView', () => {
     }
     const allowedSelf = new Set([
       'id', 'seatIndex', 'name', 'characterId', 'isHuman',
-      'folded', 'allIn', 'eliminated', 'holeCards',
+      'folded', 'allIn', 'eliminated', 'cards',
     ])
     for (const key of Object.keys(view.self)) {
       expect(allowedSelf.has(key)).toBe(true)
     }
     const allowedOpp = new Set([
       'id', 'seatIndex', 'name', 'characterId', 'isHuman',
-      'folded', 'allIn', 'eliminated', 'holeCards',
+      'folded', 'allIn', 'eliminated', 'cards', 'upCards',
     ])
     for (const opp of view.opponents) {
       for (const key of Object.keys(opp)) {
@@ -108,10 +106,10 @@ describe('getHandSummaryView', () => {
 
     view.communityCards.push('XX')
     view.actionHistory.push({ tampered: true })
-    view.self.holeCards[0] = 'XX'
+    view.self.cards[0].card = 'XX'
 
     expect(s.communityCards).toEqual(originalCommunity)
     expect(s.actionHistory).toEqual(originalHistory)
-    expect(s.players[0].holeCards).not.toContain('XX')
+    expect(getHoleCards(s.players[0])).not.toContain('XX')
   })
 })

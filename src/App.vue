@@ -44,6 +44,17 @@ const currentBlinds = computed(() => {
   if (!engineState.value) return null
   return engineState.value.blindSchedule[engineState.value.blindLevel]
 })
+
+const currentLimits = computed(() => {
+  if (!engineState.value || !engineState.value.limitSchedule) return null
+  const idx = Math.min(engineState.value.blindLevel, engineState.value.limitSchedule.length - 1)
+  return engineState.value.limitSchedule[idx]
+})
+
+const gameTypeLabel = computed(() => {
+  if (!engineState.value) return null
+  return engineState.value.gameType === 'stud' ? '7 Card Stud' : "No-Limit Hold'em"
+})
 </script>
 
 <template>
@@ -58,9 +69,16 @@ const currentBlinds = computed(() => {
         </span>
       </div>
       <div class="flex items-center gap-3 text-[11px] text-ink-300">
-        <span v-if="currentBlinds && view === 'table'" class="num-tab font-display tracking-wide text-[oklch(0.78_0.07_82)]">
+        <span v-if="gameTypeLabel && view === 'table'" class="font-display uppercase tracking-[0.2em] text-[oklch(0.78_0.07_82)]">
+          {{ gameTypeLabel }}
+        </span>
+        <span v-if="engineState && engineState.gameType !== 'stud' && currentBlinds && view === 'table'" class="num-tab font-display tracking-wide text-[oklch(0.78_0.07_82)]">
           <span class="text-[10px] uppercase tracking-[0.2em] text-ink-400">Blinds</span>
           {{ currentBlinds.smallBlind }} / {{ currentBlinds.bigBlind }}
+        </span>
+        <span v-if="engineState && engineState.gameType === 'stud' && currentLimits && view === 'table'" class="num-tab font-display tracking-wide text-[oklch(0.78_0.07_82)]">
+          <span class="text-[10px] uppercase tracking-[0.2em] text-ink-400">Limits</span>
+          {{ currentLimits.smallBet }} / {{ currentLimits.bigBet }} (bring-in {{ currentLimits.bringIn }})
         </span>
         <template v-if="view === 'table'">
           <button class="hdr-btn" @click="togglePause">{{ paused ? 'Resume' : 'Pause' }}</button>

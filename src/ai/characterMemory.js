@@ -193,11 +193,14 @@ function buildSummarizerPrompt(character, view) {
       }
     }
   }
-  const revealed = view.opponents.filter((o) => Array.isArray(o.holeCards))
+  const revealed = view.opponents.filter((o) => Array.isArray(o.cards) || Array.isArray(o.holeCards))
   if (revealed.length > 0) {
     userLines.push('', 'Showdown reveals:')
     for (const o of revealed) {
-      userLines.push(`  - ${o.name}: ${o.holeCards.join(' ')}`)
+      const cards = Array.isArray(o.cards)
+        ? o.cards.map((c) => c.card)
+        : (o.holeCards ?? [])
+      userLines.push(`  - ${o.name}: ${cards.join(' ')}`)
     }
   }
 
@@ -235,7 +238,13 @@ function buildCompactionPrompt(character, oldLongTerm, droppedNote) {
 // --- Helpers ---------------------------------------------------------------
 
 function formatHole(view) {
-  return view.self.holeCards.length > 0 ? view.self.holeCards.join(' ') : '(unknown)'
+  if (Array.isArray(view?.self?.cards) && view.self.cards.length > 0) {
+    return view.self.cards.map((c) => c.card).join(' ')
+  }
+  if (Array.isArray(view?.self?.holeCards) && view.self.holeCards.length > 0) {
+    return view.self.holeCards.join(' ')
+  }
+  return '(unknown)'
 }
 
 function nameOf(view, id) {

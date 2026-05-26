@@ -181,6 +181,101 @@ function detectDraws(holeCards, communityCards) {
   return draws
 }
 
+// Pre-evaluated stud hand description for the prompt's YOUR HAND block.
+//   selfCards:    array of { card, visibility }
+//   communityCards: array of strings (empty unless deck-shortage 7th-street)
+//   opponentUpCards: array of arrays of strings — every opponent's visible upcards (folded or live)
+//                    so the live-cards calculation can count what's been seen.
+// Returns { made, structure, liveNote }.
+export function describeStudHand({ selfCards, communityCards = [], opponentUpCards = [] }) {
+  if (!Array.isArray(selfCards) || selfCards.length === 0) return null
+  const all = selfCards.map((c) => c.card).concat(communityCards)
+  const privateCards = selfCards.filter((c) => c.visibility === 'private').map((c) => c.card)
+  const publicCards = selfCards.filter((c) => c.visibility === 'public').map((c) => c.card)
+
+  let made = null
+  if (all.length >= 5) {
+    try {
+      const hand = Hand.solve(all.map(toSolverCard))
+      made = { name: hand.name, descr: hand.descr }
+    } catch {
+      made = null
+    }
+  }
+
+  // 3rd-street structural classification (private cards = first two, public = third).
+  let structure = null
+  if (selfCards.length === 3 && privateCards.length === 2 && publicCards.length === 1) {
+    structure = classifyThirdStreet(privateCards, publicCards[0])
+  }
+
+  const liveNote = computeLiveNote(selfCards, opponentUpCards)
+
+  return { made, structure, liveNote }
+}
+
+function classifyThirdStreet(downs, upStr) {
+  const d1 = parseCard(downs[0])
+  const d2 = parseCard(downs[1])
+  const u = parseCard(upStr)
+  const ranks = [d1.rank, d2.rank, u.rank]
+  const suits = [d1.suit, d2.suit, u.suit]
+  const values = ranks.map((r) => RANK_VALUE[r])
+
+  // Rolled-up trips (all three same rank).
+  if (d1.rank === d2.rank && d2.rank === u.rank) {
+    return `rolled-up ${RANK_FULL[d1.rank]}s (three of a kind on 3rd — the strongest possible start)`
+  }
+  // Pair: split (one in hole + one up) or buried (pair in the hole).
+  if (d1.rank === d2.rank) {
+    return `buried pair of ${RANK_FULL[d1.rank]}s with ${u.rank}${u.suit.toLowerCase()} doorcard — disguised pair, opponents see your high card`
+  }
+  if (d1.rank === u.rank) {
+    return `split pair of ${RANK_FULL[d1.rank]}s (one up, one down) with ${d2.rank} kicker — pair is exposed`
+  }
+  if (d2.rank === u.rank) {
+    return `split pair of ${RANK_FULL[d2.rank]}s (one up, one down) with ${d1.rank} kicker — pair is exposed`
+  }
+
+  // Three-flush.
+  if (suits[0] === suits[1] && suits[1] === suits[2]) {
+    const sortedRanks = [...values].sort((a, b) => b - a).map((v) => Object.keys(RANK_VALUE).find((k) => RANK_VALUE[k] === v))
+    return `three to a flush (${sortedRanks.join('-')}, three of one suit) — needs four more cards of the suit`
+  }
+
+  // Three-straight (consecutive or one-gap detection).
+  const sortedV = [...values].sort((a, b) => a - b)
+  const span = sortedV[2] - sortedV[0]
+  if (sortedV[0] !== sortedV[1] && sortedV[1] !== sortedV[2]) {
+    if (span === 2) return `three to a straight (connected ${sortedV[0]}-${sortedV[2]}) — open at both ends`
+    if (span === 3) return `three to a straight with one gap (${sortedV[0]}-${sortedV[2]}) — needs the inside card`
+    if (span === 4) return `three to a straight with two gaps (${sortedV[0]}-${sortedV[2]}) — long shot`
+  }
+
+  const sortedRanks = [...values].sort((a, b) => b - a).map((v) => Object.keys(RANK_VALUE).find((k) => RANK_VALUE[k] === v))
+  return `unconnected high cards: ${sortedRanks.join('-')} — marginal start, fold to a raise without live overcards`
+}
+
+function computeLiveNote(selfCards, opponentUpCards) {
+  // For each rank present in the player's hand, count how many of the remaining copies are
+  // visible on opponents' upcards (which means they cannot help). Surface notable ones.
+  const myRanks = new Set(selfCards.map((c) => parseCard(c.card).rank))
+  const seenByRank = {}
+  for (const ups of opponentUpCards) {
+    for (const u of ups || []) {
+      const r = parseCard(u).rank
+      seenByRank[r] = (seenByRank[r] ?? 0) + 1
+    }
+  }
+  const notes = []
+  for (const r of myRanks) {
+    const seen = seenByRank[r] ?? 0
+    if (seen > 0) notes.push(`${seen} of your ${RANK_FULL[r]}s exposed on opponents' boards`)
+    else notes.push(`all four ${RANK_FULL[r]}s live (none folded or shown)`)
+  }
+  return notes.join('; ')
+}
+
 // Returns the high card of the made straight, or null if no straight exists in the rank set.
 function findStraight(rankSet) {
   for (let hi = 14; hi >= 5; hi--) {

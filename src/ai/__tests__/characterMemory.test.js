@@ -147,6 +147,7 @@ describe('summarizeHandFor', () => {
 
 function makeSummaryView() {
   return {
+    gameType: 'holdem',
     handNumber: 4,
     blinds: { smallBlind: 50, bigBlind: 100, ante: 0 },
     dealerId: 'p0',
@@ -154,12 +155,21 @@ function makeSummaryView() {
     wentToShowdown: true,
     self: {
       id: 'p1', seatIndex: 1, name: 'Wade', characterId: 'the-cowboy', isHuman: false,
-      folded: false, allIn: false, eliminated: false, holeCards: ['AH', 'KD'],
+      folded: false, allIn: false, eliminated: false,
+      cards: [
+        { card: 'AH', visibility: 'private' },
+        { card: 'KD', visibility: 'private' },
+      ],
     },
     opponents: [
       {
         id: 'p2', seatIndex: 2, name: 'Reggie', characterId: 'the-wild-card', isHuman: false,
-        folded: false, allIn: false, eliminated: false, holeCards: ['QH', 'JH'],
+        folded: false, allIn: false, eliminated: false,
+        cards: [
+          { card: 'QH', visibility: 'private' },
+          { card: 'JH', visibility: 'private' },
+        ],
+        upCards: [],
       },
     ],
     actionHistory: [

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, reactive, watch } from 'vue'
 import characters, { pickRandomCharacters } from '../ai/characters.js'
 import { probeLmStudio, EXPECTED_MODEL } from '../ai/lmStudio.js'
 import PortraitPlaceholder from './PortraitPlaceholder.vue'
@@ -8,6 +8,7 @@ const portraitFailed = reactive({}) // id → true if image failed to load
 
 const emit = defineEmits(['start'])
 
+const gameType = ref('holdem') // 'holdem' | 'stud'
 const seatCount = ref(6)
 const startingStack = ref(10000)
 const handsPerLevel = ref(10)
@@ -15,8 +16,15 @@ const pickedCharacterIds = ref([])
 const lmStatus = ref({ checked: false, reachable: false, hasExpectedModel: false, error: null, models: [] })
 const degradedMode = ref(false)
 
+const maxSeats = computed(() => (gameType.value === 'stud' ? 8 : 10))
+
+// Clamp seat count down when switching to stud (which is capped at 8).
+watch(gameType, (next) => {
+  if (next === 'stud' && seatCount.value > 8) seatCount.value = 8
+})
+
 const aiSeatCount = computed(() => seatCount.value - 1)
-const canStart = computed(() => aiSeatCount.value >= 1 && aiSeatCount.value <= 9)
+const canStart = computed(() => aiSeatCount.value >= 1 && aiSeatCount.value <= maxSeats.value - 1)
 
 function toggleCharacter(id) {
   const idx = pickedCharacterIds.value.indexOf(id)
@@ -45,6 +53,8 @@ function onStart() {
     seats: buildSeats(),
     startingStack: startingStack.value,
     handsPerLevel: handsPerLevel.value,
+    gameType: gameType.value,
+    limitStructure: gameType.value === 'stud' ? 'fixed-limit' : 'no-limit',
     degradedMode: degradedMode.value || !lmStatus.value.hasExpectedModel,
   })
 }
@@ -99,14 +109,39 @@ onMounted(() => recheckLm())
       </button>
     </div>
 
+    <!-- Game type selector -->
+    <div class="flex flex-col gap-2">
+      <span class="text-sm text-slate-300">Game</span>
+      <div class="flex gap-3">
+        <label
+          :class="[
+            'flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition',
+            gameType === 'holdem' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-900',
+          ]"
+        >
+          <input type="radio" value="holdem" v-model="gameType" class="accent-amber-500" />
+          <span class="font-display text-[14px]">No-Limit Hold'em</span>
+        </label>
+        <label
+          :class="[
+            'flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition',
+            gameType === 'stud' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-900',
+          ]"
+        >
+          <input type="radio" value="stud" v-model="gameType" class="accent-amber-500" />
+          <span class="font-display text-[14px]">7 Card Stud (fixed limit)</span>
+        </label>
+      </div>
+    </div>
+
     <!-- Seat count + stack + blinds -->
     <div class="grid grid-cols-3 gap-6">
       <label class="flex flex-col gap-2">
-        <span class="text-sm text-slate-300">Total seats (2–10)</span>
+        <span class="text-sm text-slate-300">Total seats (2–{{ maxSeats }})</span>
         <input
           type="number"
           min="2"
-          max="10"
+          :max="maxSeats"
           v-model.number="seatCount"
           class="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 font-mono"
         />
@@ -165,7 +200,9 @@ onMounted(() => recheckLm())
             <PortraitPlaceholder v-else :name="c.name" :id="c.id" />
           </div>
           <div class="text-xs font-semibold">{{ c.name }}</div>
-          <div class="text-[10px] leading-tight text-slate-400">{{ c.playStyle }}</div>
+          <div class="text-[10px] leading-tight text-slate-400">
+            {{ typeof c.playStyle === 'string' ? c.playStyle : (c.playStyle?.[gameType] ?? c.playStyle?.holdem) }}
+          </div>
         </button>
       </div>
     </div>

@@ -10,11 +10,14 @@ export function awardPotsAtShowdown(state) {
   const pots = computePots(state)
   const contenders = state.players.filter((p) => !p.folded && !p.eliminated)
 
-  // Evaluate hands once per contender.
+  // Evaluate hands once per contender. Each player's `cards` array carries every card they
+  // hold (private + public for stud, two private for Hold'em). Plus any community cards
+  // (always present for Hold'em; only the stud deck-shortage fallback card for stud).
   const handsByPlayer = new Map()
   for (const p of contenders) {
-    const all7 = [...p.holeCards, ...state.communityCards].map(toSolverCard)
-    handsByPlayer.set(p.id, Hand.solve(all7))
+    const personal = (p.cards ?? []).map((c) => c.card)
+    const all = [...personal, ...state.communityCards].map(toSolverCard)
+    handsByPlayer.set(p.id, Hand.solve(all))
   }
 
   for (let i = 0; i < pots.length; i++) {

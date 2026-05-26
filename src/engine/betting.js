@@ -1,4 +1,5 @@
 import { currentBlinds } from './blindSchedule.js'
+import { currentLimits } from './limitSchedule.js'
 import { nextActiveIndex } from './state.js'
 import { advanceStreetIfReady } from './streets.js'
 
@@ -10,6 +11,12 @@ function findPlayer(state, playerId) {
   const p = state.players.find((x) => x.id === playerId)
   if (!p) throw new Error(`Unknown player: ${playerId}`)
   return p
+}
+
+function activeBetUnit(state) {
+  const limits = currentLimits(state)
+  if (!limits) return 0
+  return state.bigBetUnlocked ? limits.bigBet : limits.smallBet
 }
 
 // Compute the set of legal actions for the current player.
@@ -27,14 +34,44 @@ export function legalActions(state, playerId) {
   const canCall = callAmount > 0 && p.stack >= callAmount
   const canCheck = callAmount === 0
   const canFold = true
-
-  const bb = currentBlinds(state).bigBlind
-  // Min raise = currentBet + lastRaiseSize (or BB if there's no bet yet).
-  const minRaiseIncrement = Math.max(state.lastRaiseSize, bb)
-  const minRaiseTo = state.currentBet + minRaiseIncrement
-  const playerMaxTotal = p.currentBet + p.stack
-  const canRaise = playerMaxTotal >= minRaiseTo
   const canAllIn = p.stack > 0
+
+  let canRaise = false
+  let minRaiseTo = 0
+  let maxRaiseTo = 0
+  const playerMaxTotal = p.currentBet + p.stack
+
+  if (state.limitStructure === 'fixed-limit') {
+    const limits = currentLimits(state)
+    const unit = activeBetUnit(state)
+    // Bring-in completion special case: on 3rd street while state.currentBet is still the
+    // bring-in amount, a raise lands at exactly the small bet (not bringIn + smallBet).
+    const isBringInCompletion =
+      limits
+      && state.street === 'third'
+      && state.currentBet > 0
+      && state.currentBet < limits.smallBet
+    const raiseTo = isBringInCompletion
+      ? limits.smallBet
+      : state.currentBet + unit
+    // Cap: with 3+ live players, no more than 1 bet + 3 raises (raisesThisStreet === 3).
+    // Heads-up is exempt from the cap.
+    const liveCount = state.players.filter((pl) => !pl.folded && !pl.eliminated).length
+    const capReached = liveCount >= 3 && (state.raisesThisStreet ?? 0) >= 3
+    if (!capReached && playerMaxTotal >= raiseTo) {
+      canRaise = true
+      minRaiseTo = raiseTo
+      maxRaiseTo = raiseTo
+    }
+  } else {
+    const bb = currentBlinds(state).bigBlind
+    const minRaiseIncrement = Math.max(state.lastRaiseSize, bb)
+    minRaiseTo = state.currentBet + minRaiseIncrement
+    if (playerMaxTotal >= minRaiseTo) {
+      canRaise = true
+      maxRaiseTo = playerMaxTotal
+    }
+  }
 
   return {
     canFold,
@@ -43,7 +80,7 @@ export function legalActions(state, playerId) {
     callAmount,
     canRaise,
     minRaise: canRaise ? minRaiseTo : 0,
-    maxRaise: canRaise ? playerMaxTotal : 0,
+    maxRaise: canRaise ? maxRaiseTo : 0,
     canAllIn,
     allInAmount: p.stack,
   }
@@ -95,6 +132,9 @@ export function applyAction(state, playerId, actionObj) {
       if (typeof raiseTo !== 'number') throw new Error('raise requires amount')
       if (raiseTo > la.maxRaise) throw new Error(`Raise exceeds stack (max ${la.maxRaise})`)
       if (raiseTo < la.minRaise) throw new Error(`Raise below minimum (min ${la.minRaise})`)
+      if (state.limitStructure === 'fixed-limit' && raiseTo !== la.minRaise) {
+        throw new Error(`Fixed-limit raise must equal ${la.minRaise}`)
+      }
       const additional = raiseTo - p.currentBet
       p.stack -= additional
       const raiseIncrement = raiseTo - state.currentBet
@@ -103,6 +143,7 @@ export function applyAction(state, playerId, actionObj) {
       if (p.stack === 0) p.allIn = true
       state.currentBet = raiseTo
       state.lastRaiseSize = raiseIncrement
+      state.raisesThisStreet = (state.raisesThisStreet ?? 0) + 1
       // A full raise reopens action: clear hasActedThisStreet for everyone else.
       for (const other of state.players) {
         if (other.id !== p.id && !other.folded && !other.allIn && !other.eliminated) {
@@ -124,11 +165,14 @@ export function applyAction(state, playerId, actionObj) {
       const raiseIncrement = newTotal - state.currentBet
       if (newTotal > state.currentBet) {
         const bb = currentBlinds(state).bigBlind
-        const minRaiseIncrement = Math.max(state.lastRaiseSize, bb)
+        const minRaiseIncrement = state.limitStructure === 'fixed-limit'
+          ? activeBetUnit(state)
+          : Math.max(state.lastRaiseSize, bb)
         state.currentBet = newTotal
         if (raiseIncrement >= minRaiseIncrement) {
           // Full raise: reopens action.
           state.lastRaiseSize = raiseIncrement
+          state.raisesThisStreet = (state.raisesThisStreet ?? 0) + 1
           for (const other of state.players) {
             if (other.id !== p.id && !other.folded && !other.allIn && !other.eliminated) {
               other.hasActedThisStreet = false
@@ -146,6 +190,9 @@ export function applyAction(state, playerId, actionObj) {
   }
 
   p.hasActedThisStreet = true
+  // Once the bring-in player has acted, they are no longer "the forced bring-in" — clear the flag
+  // so subsequent street logic doesn't treat them specially.
+  if (p.isBringIn) p.isBringIn = false
   recordTableChat(state, p, actionObj.say)
   advanceTurnOrStreet(state)
   return state

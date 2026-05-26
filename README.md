@@ -1,6 +1,6 @@
 # AI Poker
 
-A single-player Texas Hold'em SPA played against AI characters whose **live reasoning** is streamed into a side panel. Built with Vue 3 + Vite + Pinia + Tailwind. All AI decisions come from a local [LM Studio](https://lmstudio.ai/) instance — no cloud, no API costs.
+A single-player poker SPA — pick between **No-Limit Texas Hold'em** and **fixed-limit 7 Card Stud** — played against AI characters whose **live reasoning** is streamed into a side panel. Built with Vue 3 + Vite + Pinia + Tailwind. All AI decisions come from a local [LM Studio](https://lmstudio.ai/) instance — no cloud, no API costs.
 
 The default model is now `gemma-4-26b-a4b-it-ultra-uncensored-heretic`, a non-reasoning instruction-tuned model that still happily emits inline `<think>…</think>` reasoning when prompted, so the reasoning panel keeps working. To switch models, edit `EXPECTED_MODEL` in [`src/ai/lmStudio.js`](src/ai/lmStudio.js).
 
@@ -54,9 +54,9 @@ npm run test:watch   # watch mode
 
 ## Architecture
 
-- `src/engine/` — pure JS Hold'em rules. No Vue, no DOM. Tested with Vitest.
-  - `getPlayerView(state, playerId)` is the **only** API the AI driver uses for in-turn decisions. Other players' hole cards are not present on the returned object — the engine guarantees no cheating by construction.
-  - `getHandSummaryView(state, playerId)` is the post-hand counterpart, used by the per-character memory summarizer. It reveals showdown opponents' hole cards but keeps folded opponents hidden.
+- `src/engine/` — pure JS poker rules for Hold'em and 7 Card Stud. No Vue, no DOM. Tested with Vitest. The engine carries `gameType: 'holdem' | 'stud'` on top-level state and dispatches dealing, street progression, and betting rules accordingly. Each player's cards are stored as `{ card, visibility: 'private' | 'public' }` objects so stud upcards and Hold'em hole cards share one shape.
+  - `getPlayerView(state, playerId)` is the **only** API the AI driver uses for in-turn decisions. Other players' private cards are not present on the returned object; only `upCards` (public-only) leak through. The engine guarantees no cheating by construction.
+  - `getHandSummaryView(state, playerId)` is the post-hand counterpart, used by the per-character memory summarizer. It reveals showdown opponents' full cards but keeps folded opponents' private cards hidden.
 - `src/ai/` — character roster, LM Studio client, streaming `<think>` parser, prompt builder, action validator, and per-character session memory (`characterMemory.js`).
 - `src/components/` — Vue components for the table, seats, cards, chips, action controls, research panel, speech bubbles.
 - `src/stores/` — Pinia stores: `game` (engine state + turn loop + per-AI hand-end memory dispatch), `ai` (per-character reasoning streams), `ui` (panel toggles, bubble timers).
