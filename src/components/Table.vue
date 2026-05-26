@@ -8,6 +8,8 @@ import HandHistory from './HandHistory.vue'
 import FlyingChip from './FlyingChip.vue'
 import PlayerBet from './PlayerBet.vue'
 import { computePots } from '../engine/sidePots.js'
+import { describeHumanHud } from '../ai/humanHud.js'
+import { estimateHumanEquity } from '../ai/equity.js'
 
 const props = defineProps({
   state: { type: Object, required: true },
@@ -270,6 +272,66 @@ const mostRecentActorId = computed(() => {
   return null
 })
 
+// Human HUD: cheap-to-compute current-hand description (label + best-5 highlight) and a
+// Monte Carlo equity estimate. We avoid recomputing on every reactive tick by deriving a
+// stable "fingerprint" string and only re-running when it changes. The fingerprint
+// excludes per-tick noise (action history length, bet sizes) and only flips when the
+// underlying card information actually moves.
+const humanHandSummary = computed(() => describeHumanHud(props.state, props.humanId))
+
+const equityFingerprint = computed(() => {
+  const s = props.state
+  if (!s) return ''
+  const human = s.players.find((p) => p.id === props.humanId)
+  if (!human) return ''
+  const humanCards = (human.cards ?? [])
+    .map((c) => `${c.card}.${c.visibility}`)
+    .join(',')
+  const community = (s.communityCards ?? []).join(',')
+  const opps = s.players
+    .filter((p) => p.id !== props.humanId)
+    .map((p) => {
+      const status = p.eliminated ? 'E' : p.folded ? 'F' : 'L'
+      const ups = (p.cards ?? [])
+        .filter((c) => c.visibility === 'public')
+        .map((c) => c.card)
+        .join('|')
+      return `${p.id}:${status}:${ups}`
+    })
+    .join(';')
+  return `${s.gameType}|${s.handNumber}|${s.street}|${humanCards}|${community}|${opps}`
+})
+
+const humanEquity = ref(null)
+let equityScheduleHandle = null
+watch(
+  equityFingerprint,
+  (key) => {
+    if (equityScheduleHandle) {
+      clearTimeout(equityScheduleHandle)
+      equityScheduleHandle = null
+    }
+    if (!key) {
+      humanEquity.value = null
+      return
+    }
+    // Defer onto the next macrotask so the UI paint doesn't block on the sim. For
+    // preflop Hold'em with many opponents the sim can take 30-100ms.
+    equityScheduleHandle = setTimeout(() => {
+      humanEquity.value = estimateHumanEquity(props.state, props.humanId)
+      equityScheduleHandle = null
+    }, 0)
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  if (equityScheduleHandle) {
+    clearTimeout(equityScheduleHandle)
+    equityScheduleHandle = null
+  }
+})
+
 const winnerSummary = computed(() => {
   const awards = awardEntries.value
   if (awards.length === 0) return null
@@ -362,6 +424,9 @@ const winnerSummary = computed(() => {
         :is-dealer="state.players[state.dealerIndex]?.id === player.id"
         :show-hole-cards="showAtShowdown"
         :anchor="seatAnchor(idx, orderedPlayers.length)"
+        :hud-label="player.id === humanId ? humanHandSummary?.label ?? null : null"
+        :hud-equity="player.id === humanId ? humanEquity : null"
+        :hud-best-cards="player.id === humanId ? humanHandSummary?.bestCards ?? null : null"
         class="absolute z-10"
         :style="seatStyle(idx, orderedPlayers.length)"
       />

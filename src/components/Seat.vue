@@ -17,6 +17,13 @@ const props = defineProps({
   // direction so top-arc seats render the speech bubble BELOW the portrait (otherwise it
   // would fly off the table edge).
   anchor: { type: String, default: 'side' },
+  // Human-only HUD inputs (computed in Table.vue, ignored for AI seats).
+  //   hudLabel: one-line description of the human's current best hand or starting hand
+  //   hudEquity: { equity, win, tie, samples, opponents } or null
+  //   hudBestCards: Set of normalised "RankSuit" card strings that are part of the best-5
+  hudLabel: { type: String, default: null },
+  hudEquity: { type: Object, default: null },
+  hudBestCards: { type: Object, default: null },
 })
 
 const portraitError = ref(false)
@@ -81,6 +88,28 @@ const thinkPreview = computed(() => {
   const tail = text.length > 120 ? '…' + text.slice(-120) : text
   return tail.replace(/\s+/g, ' ').trim()
 })
+
+// Show the HUD only for the human, while they're still in the hand and the table isn't
+// at showdown. Even when the equity sim returns nothing (e.g. degenerate case) the label
+// can still be useful, so we render the badge whenever either field is populated.
+const showHumanHud = computed(() =>
+  props.isHuman && !props.player.folded && !props.player.eliminated && (props.hudLabel || props.hudEquity)
+)
+
+const equityPct = computed(() => {
+  const e = props.hudEquity?.equity
+  if (typeof e !== 'number') return null
+  return Math.round(e * 100)
+})
+
+// Membership test for the "is this card part of the best 5?" highlight. Always uppercase
+// before checking so we match the engine's "AS"/"TH" encoding regardless of how the
+// solver returned the card.
+function isInBest(cardStr) {
+  if (!cardStr || !(props.hudBestCards instanceof Set)) return false
+  const c = cardStr.toUpperCase()
+  return props.hudBestCards.has(c)
+}
 </script>
 
 <template>
@@ -162,6 +191,17 @@ const thinkPreview = computed(() => {
       </div>
     </div>
 
+    <!-- Human-only HUD: live equity estimate + label for the current best hand. Sits
+         between the name/stack block and the cards so it reads naturally as "this is what
+         your hand is worth right now". Hidden for AI seats and at showdown. -->
+    <div v-if="showHumanHud" class="human-hud font-display flex items-center gap-2 px-2.5 py-1 text-[11px]">
+      <span v-if="equityPct !== null" class="hud-eq num-tab font-semibold tracking-wide">
+        {{ equityPct }}%
+        <span class="hud-eq-label">equity</span>
+      </span>
+      <span v-if="hudLabel" class="hud-label leading-tight">{{ hudLabel }}</span>
+    </div>
+
     <div v-if="!player.eliminated && shownCards.length > 0" class="flex gap-1.5">
       <Card
         v-for="(c, i) in shownCards"
@@ -169,6 +209,7 @@ const thinkPreview = computed(() => {
         :card="c.visibility === 'public' ? c.face : (reveal ? c.face : null)"
         :face-down="c.visibility === 'private' && !reveal"
         :size="isHuman ? 'lg' : 'md'"
+        :highlight="isHuman && isInBest(c.face)"
         :class="isHuman && c.visibility === 'private' ? 'tilt-down' : ''"
         :style="{ '--deal-delay': `${i * 100}ms` }"
       />
@@ -233,5 +274,35 @@ const thinkPreview = computed(() => {
     inset 0 1px 0 oklch(0.50 0.04 60 / 0.3),
     0 8px 18px oklch(0 0 0 / 0.55);
   backdrop-filter: blur(6px);
+}
+.human-hud {
+  background: linear-gradient(180deg, oklch(0.22 0.035 45 / 0.92), oklch(0.14 0.022 40 / 0.92));
+  border: 1px solid oklch(0.42 0.07 78 / 0.5);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 1px 0 oklch(0.55 0.06 70 / 0.3),
+    0 4px 10px oklch(0 0 0 / 0.5);
+  color: oklch(0.92 0.04 84);
+  max-width: 280px;
+}
+.hud-eq {
+  color: oklch(0.86 0.14 82);
+  font-size: 13px;
+}
+.hud-eq-label {
+  margin-left: 2px;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: oklch(0.74 0.06 78 / 0.85);
+  font-weight: 500;
+}
+.hud-label {
+  font-style: italic;
+  color: oklch(0.86 0.04 80);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

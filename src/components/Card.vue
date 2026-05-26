@@ -5,6 +5,10 @@ const props = defineProps({
   card: { type: String, default: null }, // e.g. "AS" or null
   faceDown: { type: Boolean, default: false },
   size: { type: String, default: 'md' }, // 'sm' | 'md' | 'lg'
+  // When true, render a brass/amber glow ring around the card to indicate it's part of
+  // the human's currently-best 5-card hand. Used only for the human's own cards on the
+  // table HUD; AI seats and the community row never receive a highlight.
+  highlight: { type: Boolean, default: false },
 })
 
 const sizeMap = {
@@ -45,7 +49,11 @@ const inkColor = computed(() => isRed.value ? 'var(--card-red)' : 'var(--card-in
 
 <template>
   <div
-    :class="['card-frame card-dealt relative shrink-0 select-none', sz.w, sz.h, sz.radius]"
+    :class="[
+      'card-frame card-dealt relative shrink-0 select-none',
+      sz.w, sz.h, sz.radius,
+      highlight ? 'card-in-best' : '',
+    ]"
   >
     <!-- CSS face is always rendered underneath; PNG overlays only on successful load. -->
     <!-- Face-down ornamental back -->
@@ -126,6 +134,31 @@ const inkColor = computed(() => isRed.value ? 'var(--card-red)' : 'var(--card-in
   box-shadow:
     inset 0 0 0 1px oklch(0.55 0.10 72 / 0.6),
     inset 0 1px 0 oklch(1 0 0 / 0.15);
+}
+
+/* Best-hand highlight: amber outline + soft glow. Layered on top of the base card-frame
+   shadow so the card still casts its drop shadow on the felt. */
+.card-in-best {
+  box-shadow:
+    inset 0 0 0 2px oklch(0.84 0.16 82),
+    inset 0 0 0 3px oklch(0.32 0.08 50 / 0.6),
+    0 0 0 1px oklch(0.84 0.16 82 / 0.7),
+    0 0 18px oklch(0.80 0.16 82 / 0.55),
+    0 8px 18px var(--card-shadow),
+    0 2px 4px oklch(0.10 0.02 30 / 0.4);
+  animation: card-deal 480ms cubic-bezier(0.22, 1, 0.36, 1) both, card-glow 2.4s ease-in-out infinite;
+  animation-delay: var(--deal-delay, 0ms), 480ms;
+}
+@keyframes card-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px oklch(0.80 0.16 82 / 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 9px oklch(0.84 0.18 82 / 0.7));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-in-best { animation: none; }
 }
 
 /* Deal animation: card flies in from above with a slight horizontal sweep + face-flip.
