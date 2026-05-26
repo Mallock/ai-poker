@@ -59,8 +59,12 @@ describe('buildPrompt', () => {
   it('does not include any other-player hole cards in serialized messages', () => {
     const messages = buildPrompt({ view: makeView(), character })
     const json = JSON.stringify(messages)
-    expect(json).toContain('AH') // own card
-    expect(json).toContain('AD') // own card
+    // Cards are rendered with lowercase suits in the prompt (Ah, Ad). The raw cards from the
+    // view ('AH', 'AD') are still embedded in the system message via the character/memory
+    // path, but the rendered output uses 'Ah' / 'Ad'.
+    expect(json).toMatch(/A[hd]/i) // own card present in some form
+    expect(json).toContain('Ah')   // formatted own card
+    expect(json).toContain('Ad')   // formatted own card
     expect(json).not.toMatch(/"holeCards"\s*:/) // opponents shouldn't have any holeCards field
   })
 
@@ -216,6 +220,70 @@ describe('buildPrompt', () => {
     expect(user).not.toContain('line 7') // dropped
     expect(user).toContain('line 8')     // 12th from the end
     expect(user).toContain('line 19')    // most recent
+  })
+
+  it('renders cards with lowercase suits in community and hole-card lines (Jh, not JH)', () => {
+    const view = makeView()
+    view.communityCards = ['AS', 'KH', '7D']
+    view.self.holeCards = ['JH', 'TC']
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/Community cards: As Kh 7d/)
+    expect(user).toMatch(/Hole cards: Jh Tc/)
+    expect(user).not.toMatch(/Community cards: AS KH 7D/)
+  })
+
+  it('emits LIVE PLAYERS list (folded seats excluded)', () => {
+    const view = makeView()
+    // Add a folded opponent and a still-in opponent.
+    view.opponents = [
+      { id: 'p0', name: 'Op0', seatIndex: 0, characterId: 'the-old-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 200, folded: true, allIn: false, eliminated: false },
+      { id: 'p2', name: 'Op2', seatIndex: 2, characterId: 'the-stoic-asian-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 0, folded: false, allIn: false, eliminated: false },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    const liveIdx = user.indexOf('=== LIVE PLAYERS')
+    const orderIdx = user.indexOf('=== ACTION ORDER')
+    expect(liveIdx).toBeGreaterThanOrEqual(0)
+    const liveBlock = user.slice(liveIdx, orderIdx)
+    expect(liveBlock).toContain('You (Me)')
+    expect(liveBlock).toContain('Op2')
+    expect(liveBlock).not.toContain('Op0') // folded
+  })
+
+  it('renders ACTION ORDER starting from to-act, skipping folded/all-in', () => {
+    const view = makeView()
+    view.toAct = 'p1'
+    view.opponents = [
+      { id: 'p0', name: 'Op0', seatIndex: 0, characterId: 'the-old-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 200, folded: true, allIn: false, eliminated: false },
+      { id: 'p2', name: 'Op2', seatIndex: 2, characterId: 'the-stoic-asian-pro', isHuman: false, stack: 1000, currentBet: 0, totalContributed: 0, folded: false, allIn: false, eliminated: false },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    const orderIdx = user.indexOf('=== ACTION ORDER')
+    const nextIdx = user.indexOf('=== ', orderIdx + 4) // next section header
+    const orderBlock = user.slice(orderIdx, nextIdx > 0 ? nextIdx : user.length)
+    // p0 is folded → not in the action order. p1 (self) is to-act → leads. p2 follows.
+    expect(orderBlock).toMatch(/You \(Me\).*→.*Op2/)
+    expect(orderBlock).not.toContain('Op0')
+  })
+
+  it('renders pot odds when there is a bet to call', () => {
+    const view = makeView()
+    view.potTotal = 600
+    view.currentBet = 200
+    view.legalActions = { ...view.legalActions, canCheck: false, canCall: true, callAmount: 200 }
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    // call 200 into pot 600 → ratio 3:1, equity needed 200/800 = 25%
+    expect(user).toMatch(/Pot odds to call 200.*3:1.*~25%/)
+  })
+
+  it('omits pot odds line when checking is free (no bet to call)', () => {
+    const view = makeView() // makeView has canCheck=true, callAmount=0
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).not.toContain('Pot odds to call')
   })
 
   it('caps OWN-lines block at the most recent 6 entries', () => {

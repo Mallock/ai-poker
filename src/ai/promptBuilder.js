@@ -59,7 +59,7 @@ Preflop discipline is the opposite of postflop aggression. Deep-stacked (≥ ~60
 
 - **Defending the BB:** wide call vs late-position opens (BTN/CO/HJ): suited connectors, suited gappers, suited Ax, broadways, small pairs. Tighten vs UTG opens.
 - **3-bet for value (any position):** TT+, AQs+, AKo. (You happily play a big pot.)
-- **3-bet as a bluff:** suited blocker hands like A5s–A4s, A3s, suited connectors 65s–T9s, KTs, sometimes suited gappers. Only from positions where you can credibly rep strength (mostly LP/blinds vs LP open).
+- **3-bet as a bluff:** ONLY suited blocker hands. The legal bluff-3-bet pool is A5s, A4s, A3s, A2s, KTs, K9s, suited connectors 65s through T9s, and sometimes suited one-gappers (97s, 86s). **That is the complete list.** Offsuit hands are NEVER 3-bet bluffs — not K7o, not Q9o, not J9o, not T8o, not A8o, not anything offsuit and unpaired. "Maniac" / "loose-aggressive" turns the 3-bet *frequency* up within this pool, it does NOT add offsuit junk to the pool. K7o vs an UTG open is a fold for every character including the wildest Maniac at the table; 3-betting it is the model breaking character, not playing it. Bluff 3-bet from positions where you can credibly rep strength (mostly LP/blinds vs LP open) — bluff-3-betting from EP into a multi-handed table is a leak.
 - **Flat / call:** pocket pairs 22–TT for set-mining (need implied odds + position), suited broadways, suited Ax in position vs a raise that didn't come from EP.
 - **A2o, A3o, A4o, A5o, A6o, A7o, A8o, A9o from any position vs a raise: FOLD.** Offsuit weak Ax is dominated and unplayable. The same goes for K-rag offsuit, Q-low offsuit, J-low offsuit. These are not "Ax is a premium" — Ax-rag offsuit is a leak factory. The same for T6, T7, 96, 97, 87o, 76o, etc.
 
@@ -255,6 +255,40 @@ function positionLabelsForMiddle(k) {
   return table[k] ?? Array.from({ length: k }, (_, i) => `EP+${i}`)
 }
 
+// Return the live (non-folded, non-eliminated, non-all-in) players in action order starting
+// from view.toAct, walking forward by seat index around the table. If toAct isn't set or
+// isn't live, falls back to seat-order from view.self.
+function orderFromToAct(view, byId) {
+  const all = [view.self, ...view.opponents]
+    .filter((p) => !p.eliminated)
+    .sort((a, b) => a.seatIndex - b.seatIndex)
+  if (all.length === 0) return []
+  let startIdx = all.findIndex((p) => p.id === view.toAct)
+  if (startIdx < 0) startIdx = all.findIndex((p) => p.id === view.self.id)
+  if (startIdx < 0) startIdx = 0
+  const ordered = []
+  for (let i = 0; i < all.length; i++) {
+    const p = all[(startIdx + i) % all.length]
+    if (!p.folded && !p.allIn) ordered.push(p)
+  }
+  // Filter through byId to keep only the "live for this street" set, preserving order.
+  return ordered.filter((p) => byId.has(p.id))
+}
+
+// Render a card as "Jh" instead of "JH" — lowercase suits are easier for the LLM to parse
+// and match pokersolver's own format ("Wait, does JH mean Jack of Hearts?" was a real
+// Kenji failure). Accepts any string already in either format; falls back to the raw card
+// for anything unrecognized.
+function fmtCard(card) {
+  if (typeof card !== 'string' || card.length < 2) return String(card ?? '')
+  const rank = card.slice(0, -1).toUpperCase()
+  const suit = card.slice(-1).toLowerCase()
+  return rank + suit
+}
+function fmtCards(cards) {
+  return (cards ?? []).map(fmtCard).join(' ')
+}
+
 function buildUserMessage(view, handHistoryNote) {
   const positions = computePositions(view)
 
@@ -267,6 +301,42 @@ function buildUserMessage(view, handHistoryNote) {
     const tags = [pos, status].filter(Boolean).join(' ')
     return `  - ${opponentLabel(o)} (seat ${o.seatIndex})${tags ? ' ' + tags : ''} — stack ${o.stack}, currentBet ${o.currentBet}, totalThisHand ${o.totalContributed}`
   }).join('\n')
+
+  // Live players still in this hand, in action order starting from the player to-act. The
+  // OPPONENTS section above is full reference; this is a focused "who can still bet" list so
+  // the AI doesn't have to mentally filter folded seats every turn.
+  const allLive = [view.self, ...view.opponents]
+    .filter((p) => !p.eliminated && !p.folded)
+  const byId = new Map(allLive.map((p) => [p.id, p]))
+  const liveLines = allLive
+    .sort((a, b) => a.seatIndex - b.seatIndex)
+    .map((p) => {
+      const isYou = p.id === view.self.id
+      const pos = positions[p.id] ? ` [${positions[p.id]}]` : ''
+      const allIn = p.allIn ? ' [ALL-IN]' : ''
+      const label = isYou ? `You (${p.name})` : (p.isHuman ? `Human (${p.name})` : p.name)
+      return `  - ${label} (seat ${p.seatIndex})${pos}${allIn} — stack ${p.stack}`
+    })
+    .join('\n')
+
+  // Action order for the current street, starting with the player to-act and walking forward
+  // around the table among players who are still alive, not folded, not all-in. Highlights
+  // who has already acted this street (from actionHistory) so the model doesn't re-derive it.
+  const orderedLive = orderFromToAct(view, byId)
+  const actedThisStreet = new Set(
+    view.actionHistory
+      .filter((a) => a.handNumber === view.handNumber && a.street === view.street && a.action !== 'award')
+      .map((a) => a.playerId),
+  )
+  const orderLine = orderedLive.length
+    ? orderedLive.map((p) => {
+        const isYou = p.id === view.self.id
+        const name = isYou ? `You (${p.name})` : p.name
+        const pos = positions[p.id] ? ` [${positions[p.id]}]` : ''
+        const acted = actedThisStreet.has(p.id) ? ' ✓ acted' : ''
+        return `${name}${pos}${acted}`
+      }).join(' → ')
+    : '(no live players)'
 
   // Synthesize blind-post entries at the top of action history — the engine doesn't record them,
   // but they're load-bearing context for the LLM to understand the current bet picture.
@@ -298,6 +368,18 @@ function buildUserMessage(view, handHistoryNote) {
     la.canRaise && `raise (min ${la.minRaise}, max ${la.maxRaise})`,
     la.canAllIn && `all-in (${la.allInAmount} chips)`,
   ].filter(Boolean).join(', ')
+
+  // Pot odds when there's a bet to call. Pot odds = call / (current pot + call). Express both
+  // as ratio (e.g. "1.7:1") and required equity ("~37%"). When canCheck and no bet to call,
+  // skip this line — pot odds are meaningless.
+  let potOddsLine = ''
+  if (la.canCall && la.callAmount > 0) {
+    const callAmount = la.callAmount
+    const potAfterCall = view.potTotal + callAmount
+    const ratio = (view.potTotal / callAmount).toFixed(1).replace(/\.0$/, '')
+    const equityNeeded = Math.round((callAmount / potAfterCall) * 100)
+    potOddsLine = `\nPot odds to call ${callAmount}: ${ratio}:1 (pot ${view.potTotal} → calling wins a total pot of ${potAfterCall}). Need ~${equityNeeded}% equity to break even.`
+  }
 
   const dealer = findPlayer(view, view.dealerId)
   const dealerLine = dealer
@@ -365,26 +447,34 @@ ${otherChat.map((c) => {
 Hand #${view.handNumber}, street: ${view.street}
 Blinds: ${view.blinds.smallBlind}/${view.blinds.bigBlind}${view.blinds.ante ? `, ante ${view.blinds.ante}` : ''}
 ${dealerLine}
-Community cards: ${view.communityCards.length ? view.communityCards.join(' ') : '(none yet)'}
+Community cards: ${view.communityCards.length ? fmtCards(view.communityCards) : '(none yet)'}
 Pot total: ${view.potTotal}
 Current bet to match: ${view.currentBet}
+Card format note: cards are shown as <rank><suit-letter> with suit lowercase — h=hearts, d=diamonds, c=clubs, s=spades. So "Jh" = Jack of hearts, "Td" = Ten of diamonds, "As" = Ace of spades.
 ${handHistoryNote ? handHistoryNote + '\n' : ''}
 === YOUR HAND ===
 You are ${view.self.name} in seat ${view.self.seatIndex}${selfPos}.
-Hole cards: ${view.self.holeCards.join(' ')}
+Hole cards: ${fmtCards(view.self.holeCards)}
 Your stack: ${view.self.stack}
 Your current bet this street: ${view.self.currentBet}
 Your total committed this hand: ${view.self.totalContributed}
 ${stackLine}${strengthBlock}
 
-=== OPPONENTS (in seat order) ===
+=== LIVE PLAYERS (still in this hand, in seat order) ===
+${liveLines || '  (none — hand should be over)'}
+
+=== ACTION ORDER THIS STREET ===
+Acting now → next → ... (✓ = already acted this street)
+${orderLine}
+
+=== OPPONENTS (full table, in seat order) ===
 ${oppLines}
 
 === ACTION HISTORY (this hand) ===
 ${historyLines}
 ${chatBlock}
 === YOUR LEGAL ACTIONS ===
-${legalSummary}
+${legalSummary}${potOddsLine}
 
 It is YOUR turn. Decide your action and respond with the JSON object as specified.`
 }
