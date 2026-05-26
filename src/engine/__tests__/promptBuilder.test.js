@@ -376,6 +376,42 @@ describe('buildPrompt (stud)', () => {
     expect(user).toContain('their upcards 5c 7d')
   })
 
+  it('renders a Boards snapshot of every player\'s visible upcards near the top', () => {
+    const view = makeStudView()
+    view.street = 'third'
+    view.self.cards = [
+      { card: 'AH', visibility: 'private' },
+      { card: 'KH', visibility: 'private' },
+      { card: '8C', visibility: 'public' },
+    ]
+    view.opponents = [
+      { id: 'p0', name: 'Tyler', seatIndex: 0, characterId: null, isHuman: false, stack: 1000, currentBet: 25, totalContributed: 35, folded: false, allIn: false, eliminated: false, isBringIn: true, upCards: ['3D'] },
+      { id: 'p2', name: 'Delia', seatIndex: 2, characterId: null, isHuman: false, stack: 1000, currentBet: 0, totalContributed: 10, folded: false, allIn: false, eliminated: false, upCards: ['KD'] },
+      { id: 'p3', name: 'Reggie', seatIndex: 3, characterId: null, isHuman: false, stack: 1000, currentBet: 0, totalContributed: 10, folded: false, allIn: false, eliminated: false, upCards: ['KS'] },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    // The boards snapshot is rendered, mentions every player in seat order.
+    expect(user).toMatch(/Boards.*RIGHT NOW/)
+    // Single line listing all upcards.
+    expect(user).toMatch(/Tyler 3d.*You \(Me\) 8c.*Delia Kd.*Reggie Ks/)
+    // The boards line appears BEFORE the YOUR HAND section.
+    const boardsIdx = user.indexOf('Boards (every')
+    const yourHandIdx = user.indexOf('=== YOUR HAND ===')
+    expect(boardsIdx).toBeGreaterThan(0)
+    expect(yourHandIdx).toBeGreaterThan(boardsIdx)
+  })
+
+  it('marks folded seats in the Boards snapshot', () => {
+    const view = makeStudView()
+    view.opponents = [
+      { id: 'p0', name: 'Tyler', seatIndex: 0, characterId: null, isHuman: false, stack: 1000, currentBet: 0, totalContributed: 10, folded: true, allIn: false, eliminated: false, upCards: ['3D', '5C'] },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    expect(user).toMatch(/Tyler 3d 5c \[FOLDED\]/)
+  })
+
   it('renders an inferred [visible: ...] tag from opponent upcards (exposed pair)', () => {
     const view = makeStudView()
     view.opponents[0].upCards = ['8D', '8C', '7C', 'QS']

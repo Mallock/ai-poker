@@ -685,6 +685,25 @@ ${otherChat.map((c) => {
     ? `Community card (deck shortage): ${fmtCards(view.communityCards)}`
     : 'Community cards: (none in stud unless deck runs short)'
 
+  // Compact snapshot of every player's visible upcards in one line. Goes near the top of the
+  // prompt so the model cannot miss what is exposed at the table right now — a stud read
+  // starts with "what's on every board?". This duplicates info that's also in the OPPONENTS
+  // block, intentionally: models skim the OPPONENTS block past the stack/bet metadata and
+  // forget to scan every line.
+  const boardsList = [view.self, ...view.opponents]
+    .filter((p) => !p.eliminated)
+    .sort((a, b) => a.seatIndex - b.seatIndex)
+    .map((p) => {
+      const isYou = p.id === view.self.id
+      const ups = isYou ? ownPublic : (p.upCards ?? [])
+      const cardsTxt = ups.length ? fmtCards(ups) : '(none yet)'
+      const folded = p.folded ? ' [FOLDED]' : ''
+      const label = isYou ? `You (${p.name})` : p.name
+      return `${label} ${cardsTxt}${folded}`
+    })
+    .join(' | ')
+  const boardsLine = `Boards (every player's visible upcards in seat order — face-up to the entire table RIGHT NOW, including yours):\n  ${boardsList}`
+
   return `
 === TABLE STATE ===
 Hand #${view.handNumber}, 7 Card Stud, street: ${view.street}
@@ -693,6 +712,7 @@ ${communityLine}
 Pot total: ${view.potTotal}
 Current bet to match: ${view.currentBet}
 Card format note: cards are shown as <rank><suit-letter> with suit lowercase — h=hearts, d=diamonds, c=clubs, s=spades.
+${boardsLine}
 ${handHistoryNote ? handHistoryNote + '\n' : ''}
 === YOUR HAND ===
 You are ${view.self.name} in seat ${view.self.seatIndex}.${bringInLine}
