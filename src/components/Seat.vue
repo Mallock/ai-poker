@@ -194,7 +194,7 @@ function isInBest(cardStr) {
     <!-- Human-only HUD: live equity estimate + label for the current best hand. Sits
          between the name/stack block and the cards so it reads naturally as "this is what
          your hand is worth right now". Hidden for AI seats and at showdown. -->
-    <div v-if="showHumanHud" class="human-hud font-display flex items-center gap-2 px-2.5 py-1 text-[11px]">
+    <div v-if="showHumanHud" class="human-hud font-display flex items-center gap-2.5 px-3 py-1.5 text-[11px]">
       <span v-if="equityPct !== null" class="hud-eq num-tab font-semibold tracking-wide">
         {{ equityPct }}%
         <span class="hud-eq-label">equity</span>
@@ -278,16 +278,19 @@ function isInBest(cardStr) {
 .human-hud {
   background: linear-gradient(180deg, oklch(0.22 0.035 45 / 0.92), oklch(0.14 0.022 40 / 0.92));
   border: 1px solid oklch(0.42 0.07 78 / 0.5);
-  border-radius: 999px;
+  border-radius: 14px;
   box-shadow:
     inset 0 1px 0 oklch(0.55 0.06 70 / 0.3),
     0 4px 10px oklch(0 0 0 / 0.5);
   color: oklch(0.92 0.04 84);
-  max-width: 280px;
+  /* Wide enough to fit the worst preflop label ("A-Q offsuit — one gapper, strong Ax /
+     broadway ace") on a single line; allow wrap to a second line if it ever does spill. */
+  max-width: 440px;
 }
 .hud-eq {
   color: oklch(0.86 0.14 82);
   font-size: 13px;
+  flex-shrink: 0;
 }
 .hud-eq-label {
   margin-left: 2px;
@@ -301,8 +304,13 @@ function isInBest(cardStr) {
   font-style: italic;
   color: oklch(0.86 0.04 80);
   font-size: 11px;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  /* Soft cap at two lines so a runaway label can't push the row off the table edge. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 </style>

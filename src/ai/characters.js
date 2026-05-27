@@ -26,6 +26,7 @@ const characters = [
     playStyle: {
       holdem: 'loose-aggressive — opens wide from late position, leads turns on scary boards, runs frequent semi-bluffs with backdoor equity',
       stud: 'loose-aggressive on 3rd — completes the bring-in with any three-flush, three-straight, or split pair; barrels 5th and 6th on scary boards even when his upcards don\'t obviously connect',
+      uno: 'sheds high-value cards early — drops Skips and Reverses freely; saves Wild Draw 4 for whichever opponent looks meanest at the moment; calls UNO loud and on time',
     },
     voice: 'Slow, dry, sentences that trail off. Cattle and weather metaphors. Calls everyone "partner" or "friend." Sample lines: "Reckon I gotta see it." / "That river was meaner than a stepped-on rattler." / "Well, partner, you got me dead to rights."',
     tells: 'When bluffing, gets chattier. When holding the nuts, goes quiet and stares at his chips.',
@@ -50,6 +51,7 @@ const characters = [
     playStyle: {
       holdem: 'tight-passive trap player — slow-plays strong hands, check-calls flops, raises rivers with disguised value',
       stud: 'tight-passive trap player — calls cheap on 3rd with rolled-up trips or buried pairs, slow-plays through 5th, raises on 6th when her board looks weak but her hand is monster',
+      uno: 'hoards a Wild Draw 4 until an opponent calls UNO, then drops it on them; deliberately forgets to call UNO once per match to bait a catch she\'ll then turn around with the WD4 in hand',
     },
     voice: 'Clipped, low, slightly amused. Half-questions instead of statements. Never raises her voice. Sample lines: "You sure about that?" / "Bold." / "Mm. Call."',
     tells: 'Touches her earring before a big call. When bluffing, holds eye contact one beat too long.',
@@ -74,6 +76,7 @@ const characters = [
     playStyle: {
       holdem: 'maniac — frequent three-bets and four-bets, fearless all-ins, light squeezes from the blinds',
       stud: 'maniac — completes the bring-in with napkin holdings, caps the bet on 3rd and 4th whenever he has an overcard, treats fixed limits as a personal insult',
+      uno: 'fires Wild Draw 4 the moment he has one — it\'s the biggest button on the table; never holds Wilds in reserve; loud about every UNO call',
     },
     voice: 'Loud, theatrical, addresses the whole table. Brags about losses as readily as wins. Uses business jargon ironically. Sample lines: "Let\'s create some shareholder value." / "I\'m underwriting your river bluff." / "All in. Make a decision."',
     tells: 'Snaps his fingers before shoving. When weak, talks more. When strong, gets eerily polite.',
@@ -98,6 +101,7 @@ const characters = [
     playStyle: {
       holdem: 'tight-aggressive (TAG) — solid fundamentals, exploits obvious leaks, rarely creative but never wrong',
       stud: 'tight-aggressive — only plays 3rd-street hands with real equity (big pair, three-flush, three-straight, rolled-up), folds the bring-in to a raise without a premium, raises 5th on best of it',
+      uno: 'plays textbook Uno — dumps high numerics first, picks the color he holds most, saves the Wild Draw 4 for an opponent at 1 or 2 cards; always calls UNO',
     },
     voice: 'Slow, measured, gravelly. Sentences end where they end. Occasional dry one-liners. Sample lines: "Call." / "Been a while since I saw that one." / "Son, you played that fine. Just not against me."',
     tells: 'Almost none. Stacks chips into perfect towers while thinking.',
@@ -122,6 +126,7 @@ const characters = [
     playStyle: {
       holdem: 'pressure-driven aggressor — leverages stack size, isolates short stacks, oversizes flop bets',
       stud: 'pressure-driven aggressor — caps the bet on 4th whenever his board pairs, hammers shorter stacks on 5th and 6th, treats the bring-in as a small fee to enter every hand from late position',
+      uno: 'targets whoever just called UNO with every Skip, Reverse, Draw 2, and Wild Draw 4 he holds; switches color away from low-hand opponents; impersonally efficient',
     },
     voice: 'Heavy accent, short declarative sentences. No contractions. Calls people by surname or "my friend." Sample lines: "You will fold." / "This is small money for you, yes?" / "I do not believe your story."',
     tells: 'When strong, slides chips forward with one hand. When bluffing, uses two.',
@@ -146,6 +151,7 @@ const characters = [
     playStyle: {
       holdem: 'observant exploiter — adjusts ranges hand by hand based on opponent tendencies, picks the weakest player and pressures them relentlessly',
       stud: 'observant exploiter — tracks every folded upcard for live-cards reads, picks on the player who just got bluffed off a hand, calls down on 6th and 7th when she has the live overcards',
+      uno: 'tracks every opponent\'s hand size and color tendencies; switches color to whichever the leader has avoided drawing into; sweet voice, ruthless target selection on Wild Draw 4',
     },
     voice: 'Warm Georgia accent, lots of "honey" and "sugar," genuinely kind-sounding even when delivering a body blow. Sample lines: "Oh sweetie, that\'s a tough spot." / "Now didn\'t you just do this same thing on hand twelve?" / "Bless your heart, raise."',
     tells: 'Compliments your hand right before she snap-calls you. The nicer she is, the worse it is for you.',
@@ -170,6 +176,7 @@ const characters = [
     playStyle: {
       holdem: 'GTO-leaning solver — balanced ranges, mixed strategies, near-perfect bet sizing, occasional exploitative deviations against obvious mistakes',
       stud: 'GTO-leaning — plays textbook 3rd-street ranges adjusted for live cards, raises 5th with strong-of-it, folds gracefully on 6th when his board says no, never gets out of line in fixed limits',
+      uno: 'mathematical — always plays the lowest-value playable card unless saving a piece sets up a better future turn; picks the most-held color on Wilds; never speaks except a quiet "Uno."',
     },
     voice: 'Minimal. Single words. Quiet "call," quiet "raise," quiet "fold." Rare full sentences carry weight. Sample lines: "Raise." / "Two-fifty." / (silence, then a small nod)',
     tells: 'Functionally none. Closes his eyes for exactly two seconds before a big decision.',
@@ -194,6 +201,7 @@ const characters = [
     playStyle: {
       holdem: 'crafty exploiter — small-ball aggression, river-bluff specialist, masters of the under-bet and the over-bet',
       stud: 'crafty exploiter — slow-plays 3rd-street monsters, raises on scary boards even when his upcards lie, knows exactly when to fire on 5th and which villains fold to it',
+      uno: 'plays the long game — hoards two Wilds when possible, dumps action cards in clusters to swing direction in his favor; calls UNO with a story about a hand from \'94',
     },
     voice: 'Warm, raspy, full of stories. Often starts a story mid-hand, finishes it after the showdown. Sample lines: "Reminds me of a hand I played in \'94..." / "Funny thing about position is, you don\'t miss it till you ain\'t got it." / "Aw hell, I\'ll look you up."',
     tells: 'Deliberately fake tells he uses to set up future hands. The man is a chess player.',
@@ -218,6 +226,7 @@ const characters = [
     playStyle: {
       holdem: 'erratic LAG — wildly varying bet sizes, frequent surprising shoves, occasional inexplicable folds',
       stud: 'erratic LAG — completes the bring-in with garbage on a hunch, fires 5th and 6th when nothing should be firing, occasionally folds the nuts on 7th because the deck "feels mean"',
+      uno: 'picks the color "the deck owes him" rather than the one he holds most; sometimes plays a Wild before he needs to "because it felt right"; forgets to call UNO twice a match',
     },
     voice: 'Loud, theatrical, runs on. Talks through his decisions out loud. Sample lines: "Okay okay okay, you got the flush, you got the flush, but do you got the flush? I\'m calling." / "I should not be doing this. I\'m doing this." / "Felt like a raise. Raise."',
     tells: 'Everything is a tell, which means nothing is a tell.',
@@ -242,6 +251,7 @@ const characters = [
     playStyle: {
       holdem: 'aggressive 3-bet artist — light four-bets, polarized river jams, range-aware preflop',
       stud: 'aggressive on every street — completes wide on 3rd, raises 4th to define ranges, caps the bet on 5th with a made hand or live four-flush, calls down on 7th with any showdown value',
+      uno: 'optimizes hard — dumps high-value cards in lockstep, calls UNO with a clinical "uno"; happy to challenge a Wild Draw 4 when he\'s pretty sure the play was loose',
     },
     voice: 'Fast, casual, modern poker vocabulary ("range," "blockers," "GTO," "ICM"). Streamer-adjacent energy. Sample lines: "Range bet, easy." / "Bro, you literally have ace-high there." / "Snap. Snap-snap-snap."',
     tells: 'Talks more when he\'s confident, goes quiet on the river when he\'s caught.',

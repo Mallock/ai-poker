@@ -8,19 +8,32 @@ const portraitFailed = reactive({}) // id → true if image failed to load
 
 const emit = defineEmits(['start'])
 
-const gameType = ref('holdem') // 'holdem' | 'stud'
+const sessionType = ref('poker') // 'poker' | 'uno'
+const gameType = ref('holdem') // 'holdem' | 'stud' (poker-only)
 const seatCount = ref(6)
 const startingStack = ref(10000)
 const handsPerLevel = ref(10)
+const totalRounds = ref(7) // Uno-only
 const pickedCharacterIds = ref([])
 const lmStatus = ref({ checked: false, reachable: false, hasExpectedModel: false, error: null, models: [] })
 const degradedMode = ref(false)
 
-const maxSeats = computed(() => (gameType.value === 'stud' ? 8 : 10))
+const maxSeats = computed(() => {
+  if (sessionType.value === 'uno') return 8
+  return gameType.value === 'stud' ? 8 : 10
+})
 
-// Clamp seat count down when switching to stud (which is capped at 8).
+// Clamp seat count down when switching to stud or Uno (both capped at 8).
 watch(gameType, (next) => {
-  if (next === 'stud' && seatCount.value > 8) seatCount.value = 8
+  if (sessionType.value === 'poker' && next === 'stud' && seatCount.value > 8) seatCount.value = 8
+})
+watch(sessionType, (next) => {
+  if (next === 'uno' && seatCount.value > 8) seatCount.value = 8
+})
+
+const playStyleKey = computed(() => {
+  if (sessionType.value === 'uno') return 'uno'
+  return gameType.value
 })
 
 const aiSeatCount = computed(() => seatCount.value - 1)
@@ -49,7 +62,17 @@ function buildSeats() {
 }
 
 function onStart() {
+  if (sessionType.value === 'uno') {
+    emit('start', {
+      sessionType: 'uno',
+      seats: buildSeats(),
+      totalRounds: totalRounds.value,
+      degradedMode: degradedMode.value || !lmStatus.value.hasExpectedModel,
+    })
+    return
+  }
   emit('start', {
+    sessionType: 'poker',
     seats: buildSeats(),
     startingStack: startingStack.value,
     handsPerLevel: handsPerLevel.value,
@@ -70,7 +93,32 @@ onMounted(() => recheckLm())
 
 <template>
   <div class="mx-auto flex h-full max-w-4xl flex-col gap-6 px-6 py-8">
-    <h1 class="text-3xl font-semibold tracking-tight">New tournament</h1>
+    <h1 class="text-3xl font-semibold tracking-tight">{{ sessionType === 'uno' ? 'New match' : 'New tournament' }}</h1>
+
+    <!-- Session type selector -->
+    <div class="flex flex-col gap-2">
+      <span class="text-sm text-slate-300">Session</span>
+      <div class="flex gap-3">
+        <label
+          :class="[
+            'flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition',
+            sessionType === 'poker' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-900',
+          ]"
+        >
+          <input type="radio" value="poker" v-model="sessionType" class="accent-amber-500" />
+          <span class="font-display text-[14px]">Poker</span>
+        </label>
+        <label
+          :class="[
+            'flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition',
+            sessionType === 'uno' ? 'border-amber-400 bg-amber-500/10' : 'border-slate-700 bg-slate-900',
+          ]"
+        >
+          <input type="radio" value="uno" v-model="sessionType" class="accent-amber-500" />
+          <span class="font-display text-[14px]">Uno</span>
+        </label>
+      </div>
+    </div>
 
     <!-- LM Studio status -->
     <div
@@ -109,8 +157,8 @@ onMounted(() => recheckLm())
       </button>
     </div>
 
-    <!-- Game type selector -->
-    <div class="flex flex-col gap-2">
+    <!-- Game type selector (poker only) -->
+    <div v-if="sessionType === 'poker'" class="flex flex-col gap-2">
       <span class="text-sm text-slate-300">Game</span>
       <div class="flex gap-3">
         <label
@@ -134,8 +182,8 @@ onMounted(() => recheckLm())
       </div>
     </div>
 
-    <!-- Seat count + stack + blinds -->
-    <div class="grid grid-cols-3 gap-6">
+    <!-- Poker configuration -->
+    <div v-if="sessionType === 'poker'" class="grid grid-cols-3 gap-6">
       <label class="flex flex-col gap-2">
         <span class="text-sm text-slate-300">Total seats (2–{{ maxSeats }})</span>
         <input
@@ -165,6 +213,33 @@ onMounted(() => recheckLm())
           v-model.number="handsPerLevel"
           class="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 font-mono"
         />
+      </label>
+    </div>
+
+    <!-- Uno configuration -->
+    <div v-else class="grid grid-cols-2 gap-6">
+      <label class="flex flex-col gap-2">
+        <span class="text-sm text-slate-300">Total seats (2–{{ maxSeats }})</span>
+        <input
+          type="number"
+          min="2"
+          :max="maxSeats"
+          v-model.number="seatCount"
+          class="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 font-mono"
+        />
+        <span class="text-xs text-slate-500">{{ aiSeatCount }} AI opponents</span>
+      </label>
+      <label class="flex flex-col gap-2">
+        <span class="text-sm text-slate-300">Match length (best-of-N)</span>
+        <select
+          v-model.number="totalRounds"
+          class="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 font-mono"
+        >
+          <option :value="3">3 rounds</option>
+          <option :value="5">5 rounds</option>
+          <option :value="7">7 rounds</option>
+          <option :value="11">11 rounds</option>
+        </select>
       </label>
     </div>
 
@@ -201,7 +276,7 @@ onMounted(() => recheckLm())
           </div>
           <div class="text-xs font-semibold">{{ c.name }}</div>
           <div class="text-[10px] leading-tight text-slate-400">
-            {{ typeof c.playStyle === 'string' ? c.playStyle : (c.playStyle?.[gameType] ?? c.playStyle?.holdem) }}
+            {{ typeof c.playStyle === 'string' ? c.playStyle : (c.playStyle?.[playStyleKey] ?? c.playStyle?.holdem) }}
           </div>
         </button>
       </div>

@@ -4,23 +4,50 @@ import { storeToRefs } from 'pinia'
 import Table from './components/Table.vue'
 import Setup from './components/Setup.vue'
 import ResearchPanel from './components/ResearchPanel.vue'
+import UnoTable from './uno/components/UnoTable.vue'
 import { useGameStore } from './stores/game.js'
+import { useUnoGameStore } from './stores/unoGame.js'
 import { useUiStore } from './stores/ui.js'
+import { createUnoDriver } from './uno/ai/unoDriver.js'
+import { useAiStore } from './stores/ai.js'
 
 const game = useGameStore()
+const unoGame = useUnoGameStore()
 const ui = useUiStore()
 const { engineState, humanLegalActions, tournamentComplete, paused } = storeToRefs(game)
+const { matchState: unoMatchState, paused: unoPaused } = storeToRefs(unoGame)
 const { researchPanelOpen } = storeToRefs(ui)
 
 const view = ref('setup') // 'setup' | 'table'
+const sessionType = ref('poker') // 'poker' | 'uno'
+
+const unoMatchComplete = computed(() => unoMatchState.value?.matchComplete === true)
 
 function onSetupStart(config) {
-  game.startTournament(config)
+  sessionType.value = config.sessionType ?? 'poker'
+  if (sessionType.value === 'uno') {
+    const ai = useAiStore()
+    const driverFactory = (seatId) => {
+      const seat = config.seats.find((s) => s.id === seatId)
+      if (!seat || seat.isHuman) return async () => null
+      if (config.degradedMode) {
+        return createUnoDriver({ characterId: seat.characterId, eventBus: ai.eventBus(), degraded: true })
+      }
+      return createUnoDriver({ characterId: seat.characterId, eventBus: ai.eventBus() })
+    }
+    unoGame.startMatch({ ...config, driverFactory })
+  } else {
+    game.startTournament(config)
+  }
   view.value = 'table'
 }
 
 function backToSetup() {
-  game.pause()
+  if (sessionType.value === 'uno') {
+    unoGame.pause()
+  } else {
+    game.pause()
+  }
   ui.clearAllBubbles()
   view.value = 'setup'
 }
@@ -30,6 +57,10 @@ function handleAction(payload) {
 }
 
 function togglePause() {
+  if (sessionType.value === 'uno') {
+    if (unoGame.paused) unoGame.resume(); else unoGame.pause()
+    return
+  }
   if (game.paused) game.resume()
   else game.pause()
 }
@@ -52,9 +83,17 @@ const currentLimits = computed(() => {
 })
 
 const gameTypeLabel = computed(() => {
+  if (sessionType.value === 'uno') {
+    if (!unoMatchState.value) return null
+    return `Uno — Round ${unoMatchState.value.roundNumber} of ${unoMatchState.value.totalRounds}`
+  }
   if (!engineState.value) return null
   return engineState.value.gameType === 'stud' ? '7 Card Stud' : "No-Limit Hold'em"
 })
+
+const newSessionLabel = computed(() => sessionType.value === 'uno' ? 'New match' : 'New tournament')
+
+const isPaused = computed(() => sessionType.value === 'uno' ? unoPaused.value : paused.value)
 </script>
 
 <template>
@@ -72,20 +111,20 @@ const gameTypeLabel = computed(() => {
         <span v-if="gameTypeLabel && view === 'table'" class="font-display uppercase tracking-[0.2em] text-[oklch(0.78_0.07_82)]">
           {{ gameTypeLabel }}
         </span>
-        <span v-if="engineState && engineState.gameType !== 'stud' && currentBlinds && view === 'table'" class="num-tab font-display tracking-wide text-[oklch(0.78_0.07_82)]">
+        <span v-if="sessionType === 'poker' && engineState && engineState.gameType !== 'stud' && currentBlinds && view === 'table'" class="num-tab font-display tracking-wide text-[oklch(0.78_0.07_82)]">
           <span class="text-[10px] uppercase tracking-[0.2em] text-ink-400">Blinds</span>
           {{ currentBlinds.smallBlind }} / {{ currentBlinds.bigBlind }}
         </span>
-        <span v-if="engineState && engineState.gameType === 'stud' && currentLimits && view === 'table'" class="num-tab font-display tracking-wide text-[oklch(0.78_0.07_82)]">
+        <span v-if="sessionType === 'poker' && engineState && engineState.gameType === 'stud' && currentLimits && view === 'table'" class="num-tab font-display tracking-wide text-[oklch(0.78_0.07_82)]">
           <span class="text-[10px] uppercase tracking-[0.2em] text-ink-400">Limits</span>
           {{ currentLimits.smallBet }} / {{ currentLimits.bigBet }} (bring-in {{ currentLimits.bringIn }})
         </span>
         <template v-if="view === 'table'">
-          <button class="hdr-btn" @click="togglePause">{{ paused ? 'Resume' : 'Pause' }}</button>
+          <button class="hdr-btn" @click="togglePause">{{ isPaused ? 'Resume' : 'Pause' }}</button>
           <button class="hdr-btn" @click="ui.toggleResearchPanel()">
             {{ researchPanelOpen ? 'Hide panel' : 'Show panel' }}
           </button>
-          <button class="hdr-btn" @click="backToSetup">New tournament</button>
+          <button class="hdr-btn" @click="backToSetup">{{ newSessionLabel }}</button>
         </template>
       </div>
     </header>
@@ -94,7 +133,7 @@ const gameTypeLabel = computed(() => {
       <div class="flex-1 overflow-hidden">
         <Setup v-if="view === 'setup'" @start="onSetupStart" />
 
-        <div v-else-if="tournamentComplete" class="flex h-full items-center justify-center">
+        <div v-else-if="sessionType === 'poker' && tournamentComplete" class="flex h-full items-center justify-center">
           <div class="winner-card rounded-2xl px-12 py-10 text-center">
             <div class="font-display text-[11px] uppercase tracking-[0.4em] text-[oklch(0.68_0.07_82)]">Tournament</div>
             <h2 class="mt-2 font-display text-[36px] font-medium tracking-wide text-ink-100">Over</h2>
@@ -106,6 +145,10 @@ const gameTypeLabel = computed(() => {
             </p>
             <button class="hdr-btn mt-6 px-6 py-2 text-[12px]" @click="backToSetup">New tournament</button>
           </div>
+        </div>
+
+        <div v-else-if="sessionType === 'uno'" class="h-full overflow-auto">
+          <UnoTable @new-match="backToSetup" />
         </div>
 
         <div v-else class="px-6 py-4">

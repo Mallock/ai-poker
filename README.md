@@ -1,6 +1,6 @@
 # AI Poker
 
-A single-player poker SPA — pick between **No-Limit Texas Hold'em** and **fixed-limit 7 Card Stud** — played against AI characters whose **live reasoning** is streamed into a side panel. Built with Vue 3 + Vite + Pinia + Tailwind. All AI decisions come from a local [LM Studio](https://lmstudio.ai/) instance — no cloud, no API costs.
+A single-player card-game SPA — choose a **Poker** session (No-Limit Texas Hold'em or fixed-limit 7 Card Stud) or an **Uno** match (best-of-3/5/7/11 rounds) — played against AI characters whose **live reasoning** is streamed into a side panel. Built with Vue 3 + Vite + Pinia + Tailwind. All AI decisions come from a local [LM Studio](https://lmstudio.ai/) instance — no cloud, no API costs.
 
 The default model is now `gemma-4-26b-a4b-it-ultra-uncensored-heretic`, a non-reasoning instruction-tuned model that still happily emits inline `<think>…</think>` reasoning when prompted, so the reasoning panel keeps working. To switch models, edit `EXPECTED_MODEL` in [`src/ai/lmStudio.js`](src/ai/lmStudio.js).
 
@@ -68,6 +68,7 @@ Each AI character accrues a short, in-voice memory across the session: at the en
 ## Credits
 
 - **Card deck (`public/assets/sgh_kortit/`):** [Pikselipelikortit](https://suomigamehub.itch.io/pikselipelikortit) by [SuomiGameHUB](https://suomigamehub.itch.io/), released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) (May 23, 2024). 70×90 pixel-art deck, all four Finnish-suited ranks plus two jokers and two card backs.
+- **Uno cards, deck back, and table backgrounds (`public/uno/`, `Uno Game Assets/`):** [Uno Card Game Asset Pack](https://alexder.itch.io/uno-card-game-asset-pack) by [alexder](https://alexder.itch.io/). The originals live in `Uno Game Assets/` (`Red_5.png`, `Wild_Draw.png`, `Deck.png`, `Table_0.png`…); web-served copies under `public/uno/` are renamed with kebab-case (`red-5.png`, `wild-draw4.png`, `back.png`, `table-bg-0.png`).
 - **Character portraits (`public/portraits/`):** created by Mika Leiman using [Amuse](https://www.amuse-ai.com/) (local Stable Diffusion). Free to reuse within this project.
 - **Chips (optional, `public/assets/kenney/`):** [Kenney Boardgame Pack](https://kenney.nl/assets/boardgame-pack), CC0.
 - **Code:** see [`LICENSE`](LICENSE).
