@@ -2,7 +2,7 @@
 
 A single-player card-game SPA — choose a **Poker** session (No-Limit Texas Hold'em or fixed-limit 7 Card Stud) or an **Uno** match (best-of-3/5/7/11 rounds) — played against AI characters whose **live reasoning** is streamed into a side panel. Built with Vue 3 + Vite + Pinia + Tailwind. All AI decisions come from a local [LM Studio](https://lmstudio.ai/) instance — no cloud, no API costs.
 
-The default model is now `gemma-4-26b-a4b-it-ultra-uncensored-heretic`, a non-reasoning instruction-tuned model that still happily emits inline `<think>…</think>` reasoning when prompted, so the reasoning panel keeps working. To switch models, edit `EXPECTED_MODEL` in [`src/ai/lmStudio.js`](src/ai/lmStudio.js).
+The default model is now `google/gemma-4-e4b`, a reasoning model (load it with a large context window, e.g. 131072) whose `<think>…</think>` reasoning streams into the panel. To switch models, edit `EXPECTED_MODEL` in [`src/ai/lmStudio.js`](src/ai/lmStudio.js).
 
 ## Screenshots
 
@@ -23,7 +23,7 @@ npm install
 ### 2. LM Studio (for AI opponents)
 
 1. Install LM Studio: https://lmstudio.ai/
-2. Download and load model `gemma-4-26b-a4b-it-ultra-uncensored-heretic` (or any instruct/chat model — point `EXPECTED_MODEL` at it).
+2. Download and load model `google/gemma-4-e4b` (or any instruct/chat model — point `EXPECTED_MODEL` at it).
 3. Start the local server in LM Studio — it should listen on `http://localhost:1234`.
 
 The Setup screen probes `/v1/models` on load and shows a green/red indicator. If LM Studio is offline you can still play in **degraded mode** (AI seats auto-fold).

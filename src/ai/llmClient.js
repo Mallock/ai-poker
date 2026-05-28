@@ -13,7 +13,7 @@ export async function* streamChat({
   messages,
   model = EXPECTED_MODEL,
   temperature = 0.7,
-  max_tokens = 2048,
+  max_tokens = 4096,
   response_format,
   signal,
 }) {

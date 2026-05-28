@@ -6,12 +6,15 @@ import UnoSeat from './UnoSeat.vue'
 import UnoColorPicker from './UnoColorPicker.vue'
 import UnoActionControls from './UnoActionControls.vue'
 import UnoScorecard from './UnoScorecard.vue'
+import SpeechBubble from '../../components/SpeechBubble.vue'
 import { useUnoGameStore } from '../../stores/unoGame.js'
+import { useUiStore } from '../../stores/ui.js'
 import { isWild, cardLabel } from '../engine/cards.js'
 import { tableBackgroundAsset } from '../engine/cardAssets.js'
 
 const store = useUnoGameStore()
 const { matchState, scorecardPending } = storeToRefs(store)
+const { activeBubbles } = storeToRefs(useUiStore())
 
 const humanIdx = computed(() => store.humanSeatIndex)
 const view = computed(() => store.humanView)
@@ -63,7 +66,15 @@ const activeColor = computed(() => view.value?.activeColor ?? null)
 
 const showCallUno = computed(() => view.value?.legalActions.canCallUno ?? false)
 
-const callUnoRef = ref(null) // ref to UnoActionControls for reading the checkbox value
+const callUnoRef = ref(null) // ref to UnoActionControls for reading the checkbox + say draft
+
+// Single submission point: bundle the optional table-talk draft (from the controls) into the
+// action and clear it, so every human action — plays, draws, challenges — can carry a line.
+function submit(action) {
+  const say = (callUnoRef.value?.sayText || '').trim()
+  store.submitHumanAction(say ? { ...action, say } : action)
+  if (callUnoRef.value) callUnoRef.value.sayText = ''
+}
 
 function onCardClick(cardIndex) {
   if (!isHumanTurn.value) return
@@ -74,7 +85,7 @@ function onCardClick(cardIndex) {
     pickerCardIndex.value = cardIndex
     return
   }
-  store.submitHumanAction({
+  submit({
     action: 'play',
     cardIndex,
     callUno: !!callUnoRef.value?.callUno,
@@ -83,11 +94,11 @@ function onCardClick(cardIndex) {
 
 function onPickColor(color) {
   if (legalActions.value.mustChooseStartingColor) {
-    store.submitHumanAction({ action: 'chooseStartingColor', color })
+    submit({ action: 'chooseStartingColor', color })
     return
   }
   if (pickerMode.value === 'play' && pickerCardIndex.value !== null) {
-    store.submitHumanAction({
+    submit({
       action: 'play',
       cardIndex: pickerCardIndex.value,
       wildColor: color,
@@ -105,11 +116,7 @@ function onPickerCancel() {
 
 function onAction(payload) {
   if (!matchState.value) return
-  if (payload.action === 'catchMissedUno') {
-    store.submitHumanAction(payload)
-    return
-  }
-  store.submitHumanAction(payload)
+  submit(payload)
 }
 
 const pendingWildDraw4ForHuman = computed(() => {
@@ -121,6 +128,12 @@ const pendingUnoCatchForHuman = computed(() => {
   const p = matchState.value?.pendingUnoCatch
   if (!p) return false
   return p.seatIndex !== humanIdx.value
+})
+
+const humanSeatId = computed(() => matchState.value?.seats[humanIdx.value]?.id ?? null)
+const humanBubbleText = computed(() => {
+  const k = humanSeatId.value
+  return k ? (activeBubbles.value[k]?.text ?? null) : null
 })
 
 const bgUrl = computed(() => tableBackgroundAsset(((matchState.value?.roundNumber ?? 1) - 1) % 5))
@@ -184,6 +197,7 @@ const bgUrl = computed(() => tableBackgroundAsset(((matchState.value?.roundNumbe
       <div class="human-banner">
         <span class="human-name">{{ matchState.seats[humanIdx]?.name }}</span>
         <span class="human-handsize">{{ view?.self.handSize ?? 0 }} card{{ (view?.self.handSize ?? 0) === 1 ? '' : 's' }}</span>
+        <SpeechBubble v-if="humanBubbleText" :text="humanBubbleText" position="above" />
       </div>
       <div class="human-hand">
         <UnoCard

@@ -118,6 +118,8 @@ export const useGameStore = defineStore('game', {
       if (!this.engineState) return
       if (this.engineState.toAct !== this.humanId) return
       applyAction(this.engineState, this.humanId, actionObj)
+      const say = typeof actionObj?.say === 'string' ? actionObj.say.trim() : ''
+      if (say) useUiStore().showBubble(this.humanId, say)
       this.advanceTurn()
     },
 

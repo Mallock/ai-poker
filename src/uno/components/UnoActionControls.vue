@@ -14,12 +14,17 @@ const props = defineProps({
 const emit = defineEmits(['action'])
 
 const callUno = ref(false)
+// Optional table-talk line. Read + cleared by the parent (UnoTable) which owns submission,
+// so it attaches to plays (card clicks) as well as the control-button actions here.
+const sayText = ref('')
 
 // Reset the toggle when the human's hand size changes (next turn).
 watch(() => props.showCallUno, (v) => { if (!v) callUno.value = false })
 
-// "callUno" preference is read back by the parent when the play action is dispatched.
-defineExpose({ callUno })
+// "callUno" preference and the table-talk draft are read back by the parent when an action is dispatched.
+defineExpose({ callUno, sayText })
+
+const canSpeak = computed(() => props.isHumanTurn || props.pendingWildDraw4 || props.canCatchMissedUno)
 
 function emitAction(action) {
   emit('action', { ...action, callUno: props.showCallUno && callUno.value })
@@ -57,6 +62,15 @@ function emitAction(action) {
         @click="emit('action', { action: 'catchMissedUno' })"
       >Catch missed UNO!</button>
     </template>
+
+    <input
+      type="text"
+      v-model="sayText"
+      :disabled="!canSpeak"
+      maxlength="100"
+      placeholder="Say something… (optional)"
+      class="say-input"
+    />
   </div>
 </template>
 
@@ -125,4 +139,18 @@ function emitAction(action) {
   border: 1px solid oklch(0.50 0.18 60 / 0.6);
   cursor: pointer;
 }
+.say-input {
+  margin-left: auto;
+  min-width: 12rem;
+  flex: 1;
+  font-size: 13px;
+  color: oklch(0.92 0.02 80);
+  background: oklch(0.14 0.02 45);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid oklch(0.30 0.035 50 / 0.7);
+}
+.say-input::placeholder { color: oklch(0.55 0.02 60); }
+.say-input:focus { outline: none; box-shadow: 0 0 0 2px oklch(0.68 0.11 78 / 0.7); }
+.say-input:disabled { opacity: 0.5; }
 </style>

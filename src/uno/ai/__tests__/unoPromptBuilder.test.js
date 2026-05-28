@@ -5,7 +5,7 @@ import {
   parseUnoActionJson,
 } from '../unoPromptBuilder.js'
 import { getCharacter } from '../../../ai/characters.js'
-import { createInitialState, startRound } from '../../engine/state.js'
+import { createInitialState, startRound, recordChat } from '../../engine/state.js'
 import { getPlayerView } from '../../engine/view.js'
 
 function seats(n) {
@@ -50,6 +50,44 @@ describe('buildUnoUserMessage', () => {
     expect(msg).toMatch(/OPPONENTS/)
     expect(msg).toMatch(/YOUR LEGAL ACTIONS/)
     expect(msg).toMatch(/Respond with ONE JSON object/)
+  })
+
+  it('renders the human opponent with no [HUMAN] tag', () => {
+    const s = createInitialState({ seats: seats(4), totalRounds: 7, rngSeed: 1 })
+    startRound(s)
+    const view = getPlayerView(s, 1) // viewer is an AI; the human (seat 0) is an opponent
+    const msg = buildUnoUserMessage(view)
+    expect(msg).toContain('Seat 0 (seat 0)')
+    expect(msg).not.toContain('[HUMAN]')
+  })
+
+  it('includes a RECENT TABLE CHAT block with other seats\' lines when present', () => {
+    const s = createInitialState({ seats: seats(4), totalRounds: 7, rngSeed: 1 })
+    startRound(s)
+    recordChat(s, 0, 'good luck') // human
+    recordChat(s, 2, 'you too')   // AI
+    const view = getPlayerView(s, 1)
+    const msg = buildUnoUserMessage(view)
+    expect(msg).toMatch(/RECENT TABLE CHAT/)
+    expect(msg).toContain('Seat 0: good luck')
+    expect(msg).toContain('Seat 2: you too')
+  })
+
+  it('omits the table chat block when there is no chat', () => {
+    const s = createInitialState({ seats: seats(4), totalRounds: 7, rngSeed: 1 })
+    startRound(s)
+    const view = getPlayerView(s, 1)
+    const msg = buildUnoUserMessage(view)
+    expect(msg).not.toMatch(/RECENT TABLE CHAT/)
+  })
+
+  it('excludes the viewer\'s own lines from the table chat block', () => {
+    const s = createInitialState({ seats: seats(4), totalRounds: 7, rngSeed: 1 })
+    startRound(s)
+    recordChat(s, 1, 'my own line')
+    const view = getPlayerView(s, 1)
+    const msg = buildUnoUserMessage(view)
+    expect(msg).not.toContain('my own line')
   })
 })
 

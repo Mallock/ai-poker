@@ -64,8 +64,9 @@ const { activeBubbles } = storeToRefs(ui)
 const { currentHandReasoning, activeEntryId } = storeToRefs(ai)
 
 const bubbleText = computed(() => {
-  if (!props.player.characterId) return null
-  return activeBubbles.value[props.player.characterId]?.text ?? null
+  // AI seats key bubbles by characterId; the human seat has none, so fall back to its id.
+  const key = props.player.characterId ?? props.player.id
+  return activeBubbles.value[key]?.text ?? null
 })
 
 // Latest reasoning entry for THIS character in the current hand.

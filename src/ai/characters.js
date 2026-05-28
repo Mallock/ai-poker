@@ -306,12 +306,13 @@ export function pickWinningQuip(characterId) {
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
-// Map a 0–1 chattiness number to a short descriptor the LLM can act on.
+// Map a 0–1 chattiness number to a short descriptor the LLM can act on. Phrased as a target
+// speaking rate so the model actually uses the "say" field instead of defaulting to silence.
 export function chattinessDescriptor(score) {
-  if (score == null) return 'moderate — speak when it feels natural'
-  if (score <= 0.2) return 'very quiet — speak only rarely, often just a single word'
-  if (score <= 0.4) return 'reserved — speak occasionally, mostly short lines'
-  if (score <= 0.6) return 'moderate — speak when it feels natural'
-  if (score <= 0.8) return 'talkative — comment regularly throughout the hand'
-  return 'very chatty — almost always have something to say'
+  if (score == null) return 'moderate — speak on about half your turns'
+  if (score <= 0.2) return 'quiet — a line every few turns, usually short'
+  if (score <= 0.4) return 'reserved — speak on roughly one turn in three, mostly short lines'
+  if (score <= 0.6) return 'moderate — speak on about half your turns'
+  if (score <= 0.8) return 'talkative — say something on most of your turns'
+  return 'very chatty — almost always have a line; rarely stay silent'
 }

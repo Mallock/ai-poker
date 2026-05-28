@@ -37,9 +37,14 @@ const sliderMin = computed(() => props.legalActions.minRaise || 0)
 const sliderMax = computed(() => props.legalActions.maxRaise || 0)
 const sliderRange = computed(() => Math.max(1, sliderMax.value - sliderMin.value))
 
+// Optional table-talk line bundled with the next action. Cleared after each submit.
+const sayText = ref('')
+
 function submit(action, amount = 0) {
   if (props.disabled) return
-  emit('action', { action, amount })
+  const say = sayText.value.trim()
+  emit('action', say ? { action, amount, say } : { action, amount })
+  sayText.value = ''
 }
 
 function pctRaise(p) {
@@ -130,6 +135,15 @@ function pctRaise(p) {
         {{ legalActions.allInAmount.toLocaleString() }}
       </span>
     </button>
+
+    <input
+      type="text"
+      v-model="sayText"
+      :disabled="disabled"
+      maxlength="100"
+      placeholder="Say something… (optional)"
+      class="say-input ml-auto min-w-[12rem] flex-1 rounded-md border border-slate-700 bg-[oklch(0.14_0.02_45)] px-3 py-1.5 text-[13px] text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[oklch(0.68_0.11_78/0.7)] disabled:opacity-50"
+    />
   </div>
 </template>
 

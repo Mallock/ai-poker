@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, reactive, watch } from 'vue'
 import characters, { pickRandomCharacters } from '../ai/characters.js'
 import { probeLmStudio, EXPECTED_MODEL } from '../ai/lmStudio.js'
+import { resolveHumanName } from '../util/humanName.js'
 import PortraitPlaceholder from './PortraitPlaceholder.vue'
 
 const portraitFailed = reactive({}) // id → true if image failed to load
@@ -9,6 +10,7 @@ const portraitFailed = reactive({}) // id → true if image failed to load
 const emit = defineEmits(['start'])
 
 const sessionType = ref('poker') // 'poker' | 'uno'
+const humanName = ref('') // blank → random plausible name at start
 const gameType = ref('holdem') // 'holdem' | 'stud' (poker-only)
 const seatCount = ref(6)
 const startingStack = ref(10000)
@@ -49,16 +51,21 @@ function toggleCharacter(id) {
 }
 
 function buildSeats() {
-  const seats = [{ id: 'human', name: 'You', isHuman: true, characterId: null }]
   const picked = pickedCharacterIds.value.slice(0, aiSeatCount.value)
   const remaining = aiSeatCount.value - picked.length
   const autoFilled = pickRandomCharacters(remaining, picked).map((c) => c.id)
   const finalIds = [...picked, ...autoFilled]
-  finalIds.forEach((cid, i) => {
+  const aiSeats = finalIds.map((cid, i) => {
     const char = characters.find((c) => c.id === cid)
-    seats.push({ id: `ai${i}`, name: char.name, isHuman: false, characterId: char.id })
+    return { id: `ai${i}`, name: char.name, isHuman: false, characterId: char.id }
   })
-  return seats
+  const humanSeat = {
+    id: 'human',
+    name: resolveHumanName(humanName.value, aiSeats.map((s) => s.name)),
+    isHuman: true,
+    characterId: null,
+  }
+  return [humanSeat, ...aiSeats]
 }
 
 function onStart() {
@@ -119,6 +126,18 @@ onMounted(() => recheckLm())
         </label>
       </div>
     </div>
+
+    <!-- Your name -->
+    <label class="flex flex-col gap-2">
+      <span class="text-sm text-slate-300">Your name</span>
+      <input
+        type="text"
+        v-model="humanName"
+        maxlength="24"
+        placeholder="Leave blank for a random name"
+        class="rounded-md border border-slate-700 bg-slate-900 px-3 py-2"
+      />
+    </label>
 
     <!-- LM Studio status -->
     <div

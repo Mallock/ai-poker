@@ -33,6 +33,7 @@ import { isWild } from './cards.js'
 //   _rng               Rng                  PRNG (private — see rng.js)
 
 const RECENT_ACTIONS_CAP = 32
+const CHAT_LOG_CAP = 40
 
 export function createInitialState({ seats, totalRounds = 7, rngSeed } = {}) {
   if (!Array.isArray(seats) || seats.length < 2) {
@@ -60,6 +61,7 @@ export function createInitialState({ seats, totalRounds = 7, rngSeed } = {}) {
     roundComplete: false,
     roundWinnerSeatIndex: null,
     recentActions: [],
+    chatLog: [], // table-talk lines for the whole match (NOT reset per round)
     scores: Array.from({ length: seatCount }, () => 0),
     roundNumber: 0,
     totalRounds,
@@ -225,6 +227,27 @@ export function pushAction(state, entry) {
   state.recentActions.push(entry)
   if (state.recentActions.length > RECENT_ACTIONS_CAP) {
     state.recentActions.splice(0, state.recentActions.length - RECENT_ACTIONS_CAP)
+  }
+}
+
+// Append a trimmed, non-empty table-talk line attributed to a seat. No-op for empty/blank
+// text. Bounded ring so a long match doesn't grow the prompt unbounded.
+export function recordChat(state, seatIndex, raw) {
+  if (typeof raw !== 'string') return
+  const text = raw.trim()
+  if (!text) return
+  const seat = state.seats[seatIndex]
+  if (!seat) return
+  if (!Array.isArray(state.chatLog)) state.chatLog = []
+  state.chatLog.push({
+    roundNumber: state.roundNumber,
+    seatIndex,
+    name: seat.name,
+    characterId: seat.characterId ?? null,
+    text,
+  })
+  if (state.chatLog.length > CHAT_LOG_CAP) {
+    state.chatLog.splice(0, state.chatLog.length - CHAT_LOG_CAP)
   }
 }
 

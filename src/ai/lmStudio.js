@@ -5,7 +5,7 @@
 // headers. In tests / Node the proxy doesn't exist, so we hit LM Studio directly.
 const isBrowser = typeof window !== 'undefined'
 export const LM_STUDIO_URL = isBrowser ? '/lm/v1' : 'http://localhost:1234/v1'
-export const EXPECTED_MODEL = 'gemma-4-26b-a4b-it-ultra-uncensored-heretic'
+export const EXPECTED_MODEL = 'google/gemma-4-e4b'
 
 export async function probeLmStudio({ signal } = {}) {
   try {

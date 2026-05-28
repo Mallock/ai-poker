@@ -281,6 +281,24 @@ describe('buildPrompt (Hold\'em)', () => {
     expect(liveBlock).not.toContain('Op0')
   })
 
+  it('renders the human opponent by name with no "Human" label', () => {
+    const view = makeHoldemView()
+    view.opponents = [
+      { id: 'human', name: 'Mika', seatIndex: 0, characterId: null, isHuman: true, stack: 1000, currentBet: 0, totalContributed: 200, folded: false, allIn: false, eliminated: false, upCards: [] },
+    ]
+    const messages = buildPrompt({ view, character })
+    const user = messages[1].content
+    // Opponents list and LIVE PLAYERS list both show the chosen name, never "Human (...)".
+    expect(user).toContain('Mika (seat 0)')
+    expect(user).not.toContain('Human (')
+    expect(user).not.toContain('Human (Mika)')
+    const liveIdx = user.indexOf('=== LIVE PLAYERS')
+    const orderIdx = user.indexOf('=== ACTION ORDER')
+    const liveBlock = user.slice(liveIdx, orderIdx)
+    expect(liveBlock).toContain('Mika')
+    expect(liveBlock).not.toContain('Human')
+  })
+
   it('renders pot odds when there is a bet to call', () => {
     const view = makeHoldemView()
     view.potTotal = 600

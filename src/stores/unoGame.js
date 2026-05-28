@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { reactive } from 'vue'
-import { createInitialState, startRound } from '../uno/engine/state.js'
+import { createInitialState, startRound, recordChat } from '../uno/engine/state.js'
 import { applyAction, legalActions } from '../uno/engine/rules.js'
 import { getPlayerView } from '../uno/engine/view.js'
 import { advanceMatch, startNextRound } from '../uno/engine/match.js'
@@ -124,11 +124,14 @@ export const useUnoGameStore = defineStore('unoGame', {
       if (idx < 0) return
       try {
         const events = applyAction(this.matchState, idx, action)
+        recordChat(this.matchState, idx, action?.say)
         this._emitEvents(events)
       } catch (e) {
         this.error = e.message
         return
       }
+      const say = typeof action?.say === 'string' ? action.say.trim() : ''
+      if (say) useUiStore().showBubble(this.matchState.seats[idx].id, say)
       this.pendingHumanTurn = false
       this.pendingHumanWildCard = null
       this._runLoop()
@@ -252,6 +255,7 @@ export const useUnoGameStore = defineStore('unoGame', {
       }
       try {
         const events = applyAction(this.matchState, seatIndex, action)
+        recordChat(this.matchState, seatIndex, action?.say)
         this._emitEvents(events)
       } catch (e) {
         // Driver returned an illegal action despite the legal-action contract — fall back.

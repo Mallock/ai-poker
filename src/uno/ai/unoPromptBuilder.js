@@ -109,12 +109,13 @@ Rules:
 
 === TABLE TALK ("say" field) ===
 
-The table is live chat. The TABLE CHAT block (when present) is what's been said. Use "say" to react in character.
+The table is live chat and the banter is half the fun. The TABLE CHAT block (when present) is what's been said — everyone hears you, and you've heard them. Lean toward joining in; a table where people talk is far more alive than silence.
 
-- React to specific lines when relevant, or set "say": null when silence fits.
+- Your Chattiness score (above) is roughly how often to put a line in "say": ~0.2 → every few turns; ~0.5 → about every other turn; ~0.8+ → nearly every turn. When unsure, say something short rather than nothing.
+- Best line is a reaction to a specific player by name; otherwise needle the leader, groan at a Draw 2, or crow when you dump a Wild on someone. Make it about THIS moment, not a generic catchphrase.
 - Never reveal your hand, your color plans, or whether you're about to play a Wild Draw 4.
 - Stay in character. Never mention being an AI, a model, or a prompt.
-- Under 100 characters. One short line. Set "say": null when in doubt.`
+- Keep it to ONE short line, under 100 characters. Use "say": null only when nothing fits or you're a genuinely silent character — don't default to it.`
 }
 
 // Per-turn user message. Carries all state that changes turn-to-turn — keep it OUT of the
@@ -146,7 +147,7 @@ export function buildUnoUserMessage(view) {
 
   lines.push('=== OPPONENTS (seat order) ===')
   for (const opp of view.opponents) {
-    lines.push(`  - ${opp.name} (seat ${opp.seatIndex})${opp.isHuman ? ' [HUMAN]' : ''}: ${opp.handSize} card(s)`)
+    lines.push(`  - ${opp.name} (seat ${opp.seatIndex}): ${opp.handSize} card(s)`)
   }
   lines.push('')
 
@@ -160,6 +161,15 @@ export function buildUnoUserMessage(view) {
   if (view.pendingUnoCatch && view.pendingUnoCatch.seatIndex !== view.viewerSeatIndex) {
     lines.push('=== MISSED-UNO WINDOW OPEN ===')
     lines.push(`Seat ${view.pendingUnoCatch.seatIndex} just dropped to 1 card without calling UNO. You may include action "catchMissedUno" out of turn to penalize them.`)
+    lines.push('')
+  }
+
+  const otherChat = (view.tableChat ?? []).filter((c) => c.seatIndex !== view.viewerSeatIndex)
+  if (otherChat.length) {
+    lines.push('=== RECENT TABLE CHAT (lines from OTHER players — everyone at the table heard these) ===')
+    for (const c of otherChat) {
+      lines.push(`  - ${c.name}: ${c.text}`)
+    }
     lines.push('')
   }
 

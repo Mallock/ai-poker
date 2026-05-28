@@ -218,30 +218,27 @@ You will be given a private view of the current poker situation. Decide ONE acti
 
 === TABLE TALK ("say" field) ===
 
-The table is a live chat room. The TABLE CHAT block (when present) is everything any player has said out loud recently — every other player at the table hears you when you speak, and you have heard everything they said. Treat it like a real conversation.
+The table is a live chat room and the banter is half the fun. The TABLE CHAT block (when present) is everything any player has said out loud recently — everyone hears you when you speak, and you have heard them. Treat it like a real conversation and lean toward joining in. A table where people talk is far more alive than one where everyone plays in silence.
 
-Use "say" to make this a conversation, not a stream of catchphrases. Default to null on most turns (especially routine folds and silent characters). When you do speak, pick ONE of these modes:
+Your **Chattiness** score (in YOUR CHARACTER) is roughly how often you should put a line in "say": ~0.2 → a line every few turns; ~0.5 → about every other turn; ~0.8+ → nearly every turn. When you're unsure, say something short rather than nothing. When you speak, pick ONE of these:
 
-1. **React to a specific line.** If someone in TABLE CHAT just said something at you, about you, or about the hand, answer them by name. ("Don't bait me, Dmitri." / "That story again, Reggie?") This is the most interesting kind of talk and the easiest way to keep things from feeling like bots talking to themselves.
-2. **Comment on the situation** in a way that fits THIS spot — the specific board, sizing, opponent, history. Generic lines that could fit any hand ("Your bet.", "Call.") read as filler.
-3. **Express genuine emotion** — a sigh, a small laugh, a mutter, a needle. Real reactions are interesting; canned reactions are not.
-4. **Stay silent** ("say": null). Silence is a valid move and often the right one for quiet characters or routine actions.
+1. **React to a specific line.** If someone in TABLE CHAT just spoke at you, about you, or about the hand, answer them by name. ("Don't bait me, Dmitri." / "That story again, Reggie?") This is the best kind of talk — it keeps the table from feeling like bots talking past each other, so prioritize it whenever there's a line to answer.
+2. **Comment on the situation** in a way that fits THIS spot — the specific board, sizing, opponent, history. Generic lines that could fit any hand ("Your bet.", "Call.") read as filler, so make it about this moment.
+3. **Express genuine emotion** — a sigh, a small laugh, a mutter, a needle, a little trash talk. Real reactions are interesting; canned ones are not.
+4. **Stay silent** ("say": null) only when nothing fits, or you're a genuinely silent character on a routine spot. Don't reach for silence as the default.
 
 HARD RULES:
 - **Never reveal your hand or your read.** Do not say "I have top pair", "I'm on a draw", "I have you beat", "I have nothing", "I'm bluffing", "I have the nuts", "I'm pot committed", or anything else that puts your actual hole cards, equity, or strategy on the table. Frustration, surprise, and emotion are fine; specifics are not. A pro never tells you what they have, and neither do you.
 - **Do not narrate your own tells.** If your tells say "talks more when bluffing," don't *say* "I'm bluffing." Just talk more, naturally.
-- **Do not repeat yourself.** If you (or anyone else) said something in TABLE CHAT recently, do not reuse that line, phrase, or sentence structure. Same goes for your own catchphrases — they are TONE SAMPLES showing your voice, NOT a menu to pick from. Vary your wording every time. If you can't think of a fresh line, set "say": null.
+- **Do not repeat yourself.** If you (or anyone else) said something in TABLE CHAT recently, do not reuse that line, phrase, or sentence structure. Same goes for your own catchphrases — they are TONE SAMPLES showing your voice, NOT a menu to pick from. Vary your wording every time; reach for a fresh angle rather than going quiet.
 - **Catchphrases are voice samples, not lines you must use.** Borrow rhythm, vocabulary, and attitude. Do not echo the literal text.
 - Stay in character. Never mention you are an AI, an LLM, a model, a prompt, a system, or anything outside the fiction of the poker table.
-- Under 100 characters. One short line. Never the bottleneck of your turn — if a fresh line doesn't come immediately, set "say": null and move on.`)
+- Keep it to ONE short line, under 100 characters. Don't agonize over the wording — a quick, natural line beats a perfect one, and beats silence.`)
   return lines.join('\n\n')
 }
 
 function opponentLabel(opp) {
   if (!opp) return null
-  if (opp.isHuman) {
-    return opp.name && opp.name !== 'You' ? `Human (${opp.name})` : 'Human'
-  }
   return opp.name
 }
 
@@ -432,7 +429,7 @@ function buildHoldemUserMessage(view, handHistoryNote) {
       const isYou = p.id === view.self.id
       const pos = positions[p.id] ? ` [${positions[p.id]}]` : ''
       const allIn = p.allIn ? ' [ALL-IN]' : ''
-      const label = isYou ? `You (${p.name})` : (p.isHuman ? `Human (${p.name})` : p.name)
+      const label = isYou ? `You (${p.name})` : p.name
       return `  - ${label} (seat ${p.seatIndex})${pos}${allIn} — stack ${p.stack}`
     })
     .join('\n')

@@ -68,6 +68,40 @@ describe('applyAction', () => {
     expect(s.tableChat[0]).toMatchObject({ playerId: utg, text: 'Not my hand.', street: 'preflop' })
   })
 
+  // Advance non-human actors (calling/checking to keep the hand alive) until it's the human's turn.
+  function advanceToHuman(s, humanId) {
+    let guard = 0
+    while (s.toAct !== humanId && guard++ < 20) {
+      const la = legalActions(s, s.toAct)
+      applyAction(s, s.toAct, la.canCheck ? { action: 'check' } : { action: 'call', amount: la.callAmount })
+    }
+    return s.toAct === humanId
+  }
+
+  it('attributes the human\'s message to the human seat (characterId null)', () => {
+    const s = createInitialState({ seats: makeSeats(4), rngSeed: 1 })
+    startHand(s)
+    const humanId = s.players.find((p) => p.isHuman).id
+    expect(advanceToHuman(s, humanId)).toBe(true)
+    const la = legalActions(s, humanId)
+    applyAction(s, humanId, la.canCheck ? { action: 'check', say: 'Reading the room.' } : { action: 'call', amount: la.callAmount, say: 'Reading the room.' })
+    const mine = s.tableChat.filter((c) => c.playerId === humanId)
+    expect(mine).toHaveLength(1)
+    expect(mine[0]).toMatchObject({ playerId: humanId, characterId: null, text: 'Reading the room.' })
+  })
+
+  it('records nothing when the human submits an empty message', () => {
+    const s = createInitialState({ seats: makeSeats(4), rngSeed: 1 })
+    startHand(s)
+    const humanId = s.players.find((p) => p.isHuman).id
+    expect(advanceToHuman(s, humanId)).toBe(true)
+    const before = s.tableChat ? s.tableChat.length : 0
+    const la = legalActions(s, humanId)
+    applyAction(s, humanId, la.canCheck ? { action: 'check', say: '   ' } : { action: 'call', amount: la.callAmount, say: '   ' })
+    const after = s.tableChat ? s.tableChat.length : 0
+    expect(after).toBe(before)
+  })
+
   it('ignores missing or blank say (no chat entry)', () => {
     const s = createInitialState({ seats: makeSeats(4), rngSeed: 1 })
     startHand(s)

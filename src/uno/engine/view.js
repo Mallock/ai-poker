@@ -17,6 +17,7 @@ import { legalActions } from './rules.js'
 //     pendingUnoCatch: { seatIndex } | null,
 //     midTurnDraw: { seatIndex, cardIndex } | null,
 //     recentActions: ActionLogEntry[],
+//     tableChat: [{ roundNumber, seatIndex, name, characterId, text }],  // recent table-talk
 //     roundNumber, totalRounds, scores: number[],
 //     roundComplete, roundWinnerSeatIndex, matchComplete, matchWinnerSeatIndex,
 //     legalActions,
@@ -64,6 +65,7 @@ export function getPlayerView(state, viewerSeatIndex) {
     pendingUnoCatch: state.pendingUnoCatch ? { seatIndex: state.pendingUnoCatch.seatIndex } : null,
     midTurnDraw: state.midTurnDraw ? { ...state.midTurnDraw } : null,
     recentActions: state.recentActions.slice(-16),
+    tableChat: (state.chatLog ?? []).slice(-12).map((c) => ({ ...c })),
     roundNumber: state.roundNumber,
     totalRounds: state.totalRounds,
     scores: [...state.scores],

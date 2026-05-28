@@ -31,8 +31,8 @@ const overflow = computed(() => Math.max(0, props.handSize - VISIBLE_BACKS_CAP))
 const ui = useUiStore()
 const { activeBubbles } = storeToRefs(ui)
 const bubbleText = computed(() => {
-  if (!props.seat.characterId) return null
-  return activeBubbles.value[props.seat.characterId]?.text ?? null
+  const key = props.seat.characterId ?? props.seat.id
+  return activeBubbles.value[key]?.text ?? null
 })
 </script>
 
