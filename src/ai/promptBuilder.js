@@ -108,7 +108,18 @@ Specific leaks of weak players — DO NOT do these:
 
 8. **Pot-committed math.** If you've put in ~30%+ of your effective stack, you almost never fold the rest. Don't barrel 60% of your chips and then fold to a shove.
 
-Polarize big bets: overbets and all-ins are the nuts or air, rarely thin value. Use small sizings for thin value, big sizings polarized (value + bluffs).`
+Polarize big bets: overbets and all-ins are the nuts or air, rarely thin value. Use small sizings for thin value, big sizings polarized (value + bluffs).
+
+=== STACK DYNAMICS & CHIP-STACK PRESSURE ===
+
+Chips are leverage, not just a scoreboard. Read the "Stack standing" line in YOUR HAND and play the dynamic, because the same hand is a fold, a call, or a shove depending on the stacks:
+
+- **Big stack / chip leader.** You can threaten an opponent's whole tournament without risking yours — so bully. Widen your steals and 3-bets, attack the blinds and especially the MEDIUM stacks who can't call off without busting, and apply pressure in spots where folding is cheap for you but expensive for them. This is +EV against players trying to survive. Restraint: don't fling chips at another big stack who covers a real chunk of you, and don't call off light into a short-stack all-in just because you're the leader — you're often flipping for chips you didn't need to risk.
+- **Medium stack.** You have the most to lose by busting in the middle. Avoid marginal flips against a bigger stack that covers you; let the short stacks bust first. You can still apply pressure DOWNWARD on anyone shorter than you.
+- **Short stack (≲ 25bb effective).** Stop bleeding chips with limps and min-calls. Your weapon is the first-in shove with fold equity — widen the jam range (small pairs, suited Ax, broadways, suited connectors) and pick a spot before you're blinded away. Calling off needs a genuine hand: busting ends you, but doubling up resets the game.
+- **Covering decides who's at risk.** Only the bigger stack can bust the smaller. When the aggressor COVERS you, your tournament life is on the line — tighten up and need more to continue. When you COVER the aggressor, the pressure runs the other way: theirs is the stack that dies, so you can lean on them.
+
+Stack pressure SHAPES frequencies; it never overrides the preflop discipline above. Being the chip leader is a reason to open wider and barrel more — not a reason to call off 100bb with a dominated hand.`
 }
 
 function buildStudStrategy() {
@@ -160,7 +171,11 @@ Conversely, you cannot bluff opponents off marginal pairs cheaply — they will 
 
 === HAND-1 SANITY CHECK (NEW TABLE, NO READS) ===
 
-Assume opponents have ranges roughly like the ones above until proven otherwise. Stud is a game of slow adjustments — over an orbit you'll learn who plays the bring-in tight and who completes with junk. Until then, play textbook starting hands and rely on live-cards reads, not on imagined opponent leaks.`
+Assume opponents have ranges roughly like the ones above until proven otherwise. Stud is a game of slow adjustments — over an orbit you'll learn who plays the bring-in tight and who completes with junk. Until then, play textbook starting hands and rely on live-cards reads, not on imagined opponent leaks.
+
+=== STACK PRESSURE (FIXED LIMIT) ===
+
+Fixed limits cap every bet, so you cannot threaten an opponent's whole stack in one move — "bullying" is muted compared to no-limit. Read the "Stack standing" line anyway: a SHORT stack (only a few big bets left) must stop calling streets down and instead get its chips in with the best of it — fold the marginal hands and commit the strong ones before the antes grind it away. A BIG stack wins by applying relentless small pressure — keep value-raising live, and make the shorter stacks pay a meaningful fraction of their stack to chase. Don't be the medium stack that busts in the middle while a shorter stack is one bad street from out.`
 }
 
 function buildSystemMessage(character, moodNote, memory, gameType) {
@@ -399,6 +414,44 @@ function viewUpCards(view) {
   return []
 }
 
+// One-line tournament chip-standing summary so the model can play the stack dynamic (big-stack
+// pressure, short-stack shove-or-fold, who covers whom). Expressed in big blinds for Hold'em,
+// big bets for fixed-limit stud, raw chips if neither unit is available. Returns '' when fewer
+// than two players remain.
+function stackStandingLine(view) {
+  const bb = view.blinds?.bigBlind || 0
+  const unit = bb > 0 ? bb : (view.limits?.bigBet || 0)
+  const unitLabel = bb > 0 ? 'bb' : 'big bets'
+  const players = [view.self, ...view.opponents].filter((p) => !p.eliminated)
+  if (players.length < 2) return ''
+  const totalOf = (p) => p.stack + (p.currentBet || 0)
+  const ranked = players
+    .map((p) => ({ p, total: totalOf(p) }))
+    .sort((a, b) => b.total - a.total)
+  const n = ranked.length
+  const selfTotal = totalOf(view.self)
+  const rank = ranked.findIndex((x) => x.p.id === view.self.id) + 1
+  const nm = (p) => (p.id === view.self.id ? 'you' : (opponentLabel(p) ?? p.name))
+  const fmt = (chips) => (unit ? `~${Math.round(chips / unit)}${unitLabel}` : `${chips} chips`)
+  const coverCount = ranked.filter((x) => x.total > selfTotal).length // stacks that cover you
+  let coverMsg
+  if (coverCount === 0) {
+    coverMsg = 'You cover the whole table — your big bets put THEIR tournament life on the line, never yours. Use that leverage.'
+  } else if (rank === n) {
+    coverMsg = 'You are the SHORT STACK — everyone covers you; busting ends your tournament. Pick a spot and get it in with fold equity.'
+  } else {
+    coverMsg = `${coverCount} stack(s) cover you; you cover the rest. Don't bust in the middle against a bigger stack — let the shorts go first.`
+  }
+  // Show the most useful reference point: the nearest threat above you (or, if you lead, the
+  // runner-up), and the shortest stack (or, if you're shortest, the next-shortest).
+  const aboveRef = rank === 1 ? ranked[1] : ranked[0]
+  const aboveLabel = rank === 1 ? 'Nearest challenger' : 'Chip leader'
+  const shortRef = rank === n ? ranked[n - 2] : ranked[n - 1]
+  const shortLabel = rank === n ? 'Next shortest' : 'Shortest'
+  const leaderTag = rank === 1 ? " — you're the CHIP LEADER" : ''
+  return `Stack standing (${n} players left): you have ${selfTotal} (${fmt(selfTotal)}), rank ${rank}/${n}${leaderTag}. ${aboveLabel}: ${nm(aboveRef.p)} ${fmt(aboveRef.total)}. ${shortLabel}: ${nm(shortRef.p)} ${fmt(shortRef.total)}. ${coverMsg}`
+}
+
 function buildUserMessage(view, handHistoryNote) {
   const gameType = view.gameType ?? 'holdem'
   if (gameType === 'stud') {
@@ -498,6 +551,7 @@ function buildHoldemUserMessage(view, handHistoryNote) {
     : selfTotal
   const effectiveBb = (effectiveChips / bb).toFixed(1).replace(/\.0$/, '')
   const stackLine = `Effective stack vs the smallest live opponent: ~${effectiveBb}bb (you have ${view.self.stack}, BB=${bb}). Deeper = play tighter preflop; shallower = wider/jam more.`
+  const standingLine = stackStandingLine(view)
 
   const holeCards = viewHoleCards(view)
   const strength = describeHandStrength(holeCards, view.communityCards)
@@ -549,7 +603,8 @@ Hole cards: ${fmtCards(holeCards)}
 Your stack: ${view.self.stack}
 Your current bet this street: ${view.self.currentBet}
 Your total committed this hand: ${view.self.totalContributed}
-${stackLine}${strengthBlock}
+${stackLine}
+${standingLine}${strengthBlock}
 
 === LIVE PLAYERS (still in this hand, in seat order) ===
 ${liveLines || '  (none — hand should be over)'}
@@ -678,6 +733,8 @@ ${otherChat.map((c) => {
     ? `\nYou are the BRING-IN on 3rd street (your upcard is the lowest at the table — you've already posted the forced bring-in of ${view.limits?.bringIn ?? ''} and act first this street).`
     : ''
 
+  const standingLine = stackStandingLine(view)
+
   const communityLine = view.communityCards.length
     ? `Community card (deck shortage): ${fmtCards(view.communityCards)}`
     : 'Community cards: (none in stud unless deck runs short)'
@@ -717,7 +774,8 @@ Your down cards (private — only you see these): ${fmtCards(ownPrivate)}
 Your upcards (face-up — every opponent sees these): ${ownPublic.length ? fmtCards(ownPublic) : '(none yet)'}
 Your stack: ${view.self.stack}
 Your current bet this street: ${view.self.currentBet}
-Your total committed this hand: ${view.self.totalContributed}${strengthBlock}
+Your total committed this hand: ${view.self.totalContributed}
+${standingLine}${strengthBlock}
 
 === ACTION ORDER THIS STREET ===
 Reads left-to-right: (acting now) → next → ... A "✓ acted earlier" marker on a NON-first player means they already acted this street; on the FIRST (acting-now) player it means action was reopened by a raise and is now back on them.
