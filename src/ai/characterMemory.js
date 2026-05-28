@@ -119,7 +119,9 @@ export async function summarizeHandFor(character, handSummaryView, { signal } = 
       messages,
       signal,
       temperature: 0.8,
-      max_tokens: 120,
+      // Reasoning models spend tokens inside <think> before the answer; a tight cap leaves no
+      // room for the actual sentence, yielding an empty note. Give think + one sentence room.
+      max_tokens: 1024,
     })
     for await (const delta of deltas) raw += delta
   } catch {
@@ -141,7 +143,8 @@ export async function compactLongTerm(character, oldLongTerm, droppedNote, { sig
       messages,
       signal,
       temperature: 0.5,
-      max_tokens: 200,
+      // Headroom for a reasoning model's <think> block plus the short impressions text.
+      max_tokens: 1024,
     })
     for await (const delta of deltas) raw += delta
   } catch {
@@ -166,7 +169,7 @@ function buildSummarizerPrompt(character, view) {
     "A hand just ended. Write ONE short sentence (max ~30 words) in your own voice describing what you'd remember about that hand for future hands — a read on an opponent, a notable line, a tilt note, a grudge. Use the opponent names in the input.",
     'Rules:',
     '- Output ONLY the sentence. No JSON, no markdown, no quotes, no narration.',
-    '- You MAY reason inside <think>...</think> first; everything after </think> must be just the sentence.',
+    '- This is a trivial one-line task: answer directly. You do NOT need a <think> block — skip it or keep it to a few words. Everything after </think> (if you use one) must be just the sentence.',
     "- Do NOT invent facts, cards, or actions that are not in the input. If an opponent's cards are not listed, you did not see them.",
     "- If nothing memorable happened (e.g. you folded preflop), write a short throwaway line like \"Folded ${formatHole(view)} preflop, no read.\"",
   )

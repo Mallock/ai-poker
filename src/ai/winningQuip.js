@@ -19,7 +19,8 @@ export async function requestWinningQuip(characterId, context, { signal, model }
       signal,
       model,
       temperature: 0.95,
-      max_tokens: 200,
+      // A reasoning model burns the budget inside <think> first; leave room for the quip after.
+      max_tokens: 1024,
     })
     for await (const delta of deltas) raw += delta
   } catch {
