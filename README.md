@@ -1,6 +1,6 @@
 # AI Poker
 
-A single-player card-game SPA — choose a **Poker** session (No-Limit Texas Hold'em or fixed-limit 7 Card Stud) or an **Uno** match (best-of-3/5/7/11 rounds) — played against AI characters whose **live reasoning** is streamed into a side panel. Built with Vue 3 + Vite + Pinia + Tailwind. All AI decisions come from a local [LM Studio](https://lmstudio.ai/) instance — no cloud, no API costs.
+A single-player card-game SPA — choose a **Poker** session (No-Limit Texas Hold'em or fixed-limit 7 Card Stud) or an **Uno** match (best-of-3/5/7/11 rounds) — played against AI characters whose **live reasoning** is streamed into a side panel and who **speak their table talk aloud**, each in a distinct neural voice. Built with Vue 3 + Vite + Pinia + Tailwind. All AI decisions come from a local [LM Studio](https://lmstudio.ai/) instance — no cloud, no API costs.
 
 The default model is now `google/gemma-4-e4b`, a reasoning model (load it with a large context window, e.g. 131072) whose `<think>…</think>` reasoning streams into the panel. To switch models, edit `EXPECTED_MODEL` in [`src/ai/lmStudio.js`](src/ai/lmStudio.js).
 
@@ -57,13 +57,20 @@ npm run test:watch   # watch mode
 - `src/engine/` — pure JS poker rules for Hold'em and 7 Card Stud. No Vue, no DOM. Tested with Vitest. The engine carries `gameType: 'holdem' | 'stud'` on top-level state and dispatches dealing, street progression, and betting rules accordingly. Each player's cards are stored as `{ card, visibility: 'private' | 'public' }` objects so stud upcards and Hold'em hole cards share one shape.
   - `getPlayerView(state, playerId)` is the **only** API the AI driver uses for in-turn decisions. Other players' private cards are not present on the returned object; only `upCards` (public-only) leak through. The engine guarantees no cheating by construction.
   - `getHandSummaryView(state, playerId)` is the post-hand counterpart, used by the per-character memory summarizer. It reveals showdown opponents' full cards but keeps folded opponents' private cards hidden.
-- `src/ai/` — character roster, LM Studio client, streaming `<think>` parser, prompt builder, action validator, and per-character session memory (`characterMemory.js`).
+- `src/ai/` — character roster (with per-character `voiceId`), LM Studio client, streaming `<think>` parser, prompt builder, action validator, per-character session memory (`characterMemory.js`), and the browser speech service (`speech.js`).
 - `src/components/` — Vue components for the table, seats, cards, chips, action controls, research panel, speech bubbles.
-- `src/stores/` — Pinia stores: `game` (engine state + turn loop + per-AI hand-end memory dispatch), `ai` (per-character reasoning streams), `ui` (panel toggles, bubble timers).
+- `src/stores/` — Pinia stores: `game` (engine state + turn loop + per-AI hand-end memory dispatch), `ai` (per-character reasoning streams), `ui` (panel toggles, bubble timers, voice mute).
+- `vite-plugin-edge-tts.js` — dev-server middleware that proxies the free Edge neural TTS endpoint (see [Character voices](#character-voices)).
 
 ### Per-character memory
 
 Each AI character accrues a short, in-voice memory across the session: at the end of every hand a small LM Studio call writes one note per still-in-game AI based on that character's own post-hand view (showdown reveals included; folded opponents stay hidden). The notes are injected into every subsequent turn's system prompt, so characters can call back to earlier hands, hold grudges, and exploit reads. Memory is bounded by a rolling window with a distilled long-term impressions string for older observations, is session-only (wiped on new game), and is visible read-only in the Research Panel's **Memory** section.
+
+### Character voices
+
+AI table talk and winning quips are spoken aloud — each character maps to a distinct [Microsoft Edge neural voice](https://learn.microsoft.com/azure/ai-services/speech-service/language-support) through a `voiceId` field in the roster. Because the free Edge TTS endpoint needs a signed token and sends no CORS headers, synthesis runs server-side: a Vite dev-server plugin ([`vite-plugin-edge-tts.js`](vite-plugin-edge-tts.js)) exposes a `/tts?voice=…&text=…` route that streams back `audio/mpeg`, mirroring the existing `/lm` LM Studio proxy. The browser speech service ([`src/ai/speech.js`](src/ai/speech.js)) plays one utterance at a time (a new line interrupts the previous) and swallows any failure so the speech bubble always renders. Uno table talk is voiced through the same path.
+
+Voices are **muted by default** — browser autoplay policy needs a user gesture, and the first click on the **Voices** toggle in the header supplies it. The human player's lines stay text-only. Audio only works under `npm run dev` / `npm run preview` (where the proxy runs), the same constraint as LM Studio; an unrecognized `voiceId` falls back to a default voice and logs a warning.
 
 ## Credits
 
