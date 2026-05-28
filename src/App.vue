@@ -16,7 +16,7 @@ const unoGame = useUnoGameStore()
 const ui = useUiStore()
 const { engineState, humanLegalActions, tournamentComplete, paused } = storeToRefs(game)
 const { matchState: unoMatchState, paused: unoPaused } = storeToRefs(unoGame)
-const { researchPanelOpen } = storeToRefs(ui)
+const { researchPanelOpen, voiceMuted } = storeToRefs(ui)
 
 const view = ref('setup') // 'setup' | 'table'
 const sessionType = ref('poker') // 'poker' | 'uno'
@@ -121,6 +121,9 @@ const isPaused = computed(() => sessionType.value === 'uno' ? unoPaused.value : 
         </span>
         <template v-if="view === 'table'">
           <button class="hdr-btn" @click="togglePause">{{ isPaused ? 'Resume' : 'Pause' }}</button>
+          <button class="hdr-btn" @click="ui.toggleVoiceMuted()">
+            {{ voiceMuted ? 'Voices: off' : 'Voices: on' }}
+          </button>
           <button class="hdr-btn" @click="ui.toggleResearchPanel()">
             {{ researchPanelOpen ? 'Hide panel' : 'Show panel' }}
           </button>

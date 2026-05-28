@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { createEventBus } from '../ai/eventBus.js'
+import { speak } from '../ai/speech.js'
 import { useUiStore } from './ui.js'
 
 // Per-hand reasoning entries: { id, characterId, name, think, content, decision, error, complete }
@@ -53,7 +54,11 @@ export const useAiStore = defineStore('ai', {
             entry.complete = true
             // Speech bubble side-effect — handled in UI store, decoupled here.
             const ui = useUiStore()
-            if (evt.decision?.say) ui.showBubble(evt.characterId, evt.decision.say)
+            if (evt.decision?.say) {
+              ui.showBubble(evt.characterId, evt.decision.say)
+              // Voice the AI's table talk (Uno comes along for free — same decision event).
+              speak(evt.characterId, evt.decision.say)
+            }
           }
           this.activeEntryId = null
           break

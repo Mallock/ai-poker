@@ -8,6 +8,7 @@ import { defaultStudLimitSchedule } from '../engine/limitSchedule.js'
 import { createStubDriver } from '../ai/stubDriver.js'
 import { createLlmDriver } from '../ai/llmDriver.js'
 import { requestWinningQuip } from '../ai/winningQuip.js'
+import { speak } from '../ai/speech.js'
 import { getCharacter, pickWinningQuip } from '../ai/characters.js'
 import { summarizeHandFor, recordHandNote, resetAll as resetAllMemory } from '../ai/characterMemory.js'
 import { useAiStore } from './ai.js'
@@ -234,7 +235,10 @@ export const useGameStore = defineStore('game', {
             if (!text) return
             // Drop the quip if a new hand has already started — it would be stale.
             if (!this.engineState || this.engineState.handNumber !== handNumberAtRequest) return
-            setTimeout(() => ui.showBubble(characterId, text), delay)
+            setTimeout(() => {
+              ui.showBubble(characterId, text)
+              speak(characterId, text)
+            }, delay)
           }
 
           if (this.degradedMode) {

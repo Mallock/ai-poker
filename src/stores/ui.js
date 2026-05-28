@@ -10,10 +10,16 @@ export const useUiStore = defineStore('ui', {
   state: () => ({
     researchPanelOpen: true,
     activeBubbles: {}, // characterId → { text, expiresAt, timeoutId }
+    // Character voices start muted: browser autoplay policy needs a user gesture, and the
+    // first unmute click supplies it. The speech service reads this flag.
+    voiceMuted: true,
   }),
   actions: {
     toggleResearchPanel() {
       this.researchPanelOpen = !this.researchPanelOpen
+    },
+    toggleVoiceMuted() {
+      this.voiceMuted = !this.voiceMuted
     },
     showBubble(characterId, text) {
       if (!characterId || !text) return
