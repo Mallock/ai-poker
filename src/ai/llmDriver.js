@@ -63,6 +63,11 @@ export function createLlmDriver(characterId, { eventBus } = {}) {
     for (let i = others.length - 1; i >= 0; i--) {
       if (mentionsName(others[i].text, selfName)) { addressedBy = others[i].name; break }
     }
+    // Who is still in the hand vs folded, so the AI talks about the action with live
+    // opponents and only needles (never addresses as still-deciding) the folded ones.
+    const opps = (view.opponents ?? []).filter((o) => !o.eliminated)
+    const activeOpponents = opps.filter((o) => !o.folded).map((o) => o.name)
+    const foldedOpponents = opps.filter((o) => o.folded).map((o) => o.name)
     return {
       action: decision.action,
       amount: decision.amount,
@@ -72,6 +77,8 @@ export function createLlmDriver(characterId, { eventBus } = {}) {
       recentChat: others.map((c) => ({ name: c.name, text: c.text })),
       ownRecentLines,
       addressedBy,
+      activeOpponents,
+      foldedOpponents,
     }
   }
 

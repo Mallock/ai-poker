@@ -94,6 +94,19 @@ describe('buildTableTalkPrompt', () => {
     expect(user.content).toContain('Reggie just spoke to you directly')
   })
 
+  it('separates players still in the hand from folded players', () => {
+    const [system, user] = buildTableTalkPrompt(cowboy, {
+      action: 'bet', amount: 200, street: 'flop',
+      activeOpponents: ['Reggie'], foldedOpponents: ['Delia'],
+    })
+    expect(user.content).toContain('Still in the hand with you')
+    expect(user.content).toContain('Reggie')
+    expect(user.content).toContain('Already folded this hand')
+    expect(user.content).toContain('Delia')
+    // The rule that you don't address a folded player as still deciding is present.
+    expect(system.content).toContain('folded is out until the next deal')
+  })
+
   it('carries the never-reveal hard rule into the system message', () => {
     const [system] = buildTableTalkPrompt(cowboy, { action: 'all-in', amount: 5000 })
     expect(system.content).toContain('NEVER reveal your hand')

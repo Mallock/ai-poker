@@ -112,6 +112,7 @@ export function buildTableTalkPrompt(character, context = {}) {
     '- You MAY reason inside <think>...</think> first, but everything after </think> must be just the line.',
     '- NEVER reveal your hand, your read, your equity, or your strategy. No "I have top pair", "I\'m bluffing", "I\'m pot committed", "I have the nuts/nothing". Emotion is fine; specifics are not.',
     '- Talk ONLY about what has actually happened so far. Do NOT mention or invent a flop, turn, river, or any board cards that have not been dealt yet — read the "Where the hand is" line below and respect it exactly.',
+    '- Direct any talk about the current hand at players STILL IN IT. A player who has folded is out until the next deal — never address them as if they still have a decision ("your move", "you calling?"). A passing needle at a folded player is fine, but you are playing the pot against the live players.',
     '- Do NOT repeat or paraphrase anything in "Lines you already said", and do NOT recite your voice samples / catchphrases verbatim. Find a fresh angle every time.',
     '- Stay in character. Never mention you are an AI, a model, or a prompt.',
   )
@@ -120,6 +121,12 @@ export function buildTableTalkPrompt(character, context = {}) {
   user.push(`The action you just took this turn: ${describeAction(context)}.`)
   user.push(boardAwareness(context))
   if (typeof context.potTotal === 'number') user.push(`Pot: ${context.potTotal}.`)
+  if (context.activeOpponents?.length) {
+    user.push(`Still in the hand with you (these players still have decisions — talk about the pot with them): ${context.activeOpponents.join(', ')}.`)
+  }
+  if (context.foldedOpponents?.length) {
+    user.push(`Already folded this hand (out until the next deal — needle them at most, never address them as if they're still deciding): ${context.foldedOpponents.join(', ')}.`)
+  }
   if (context.addressedBy) {
     user.push(`${context.addressedBy} just spoke to you directly — answer them by name.`)
   }
