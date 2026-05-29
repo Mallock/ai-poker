@@ -1,4 +1,3 @@
-import { chattinessDescriptor } from './characters.js'
 import { describeHandStrength, describePreflopHand, describeStudHand, describeVisibleUpcards } from './handStrength.js'
 
 // Build the chat-completion messages array for one AI turn.
@@ -28,7 +27,7 @@ export function buildRetryPrompt({ view, character, badReply, moodNote = '', mem
   })
   base.push({
     role: 'user',
-    content: `Your previous reply was not valid. You MUST respond with ONLY a JSON object of the form {"action": "fold"|"check"|"call"|"raise"|"all-in", "amount": <number>, "say": <string or null>}. You may put reasoning inside <think>...</think> before the JSON, but the only output after </think> must be the JSON. Try again.`,
+    content: `Your previous reply was not valid. You MUST respond with ONLY a JSON object of the form {"action": "fold"|"check"|"call"|"raise"|"all-in", "amount": <number>}. Do not include a spoken line. You may put reasoning inside <think>...</think> before the JSON, but the only output after </think> must be the JSON. Try again.`,
   })
   return base
 }
@@ -194,7 +193,7 @@ function buildSystemMessage(character, moodNote, memory, gameType) {
 
 You play under a specific character (defined below). The character's playStyle is your **default frequency dial** for the fundamentals above — not a reason to ignore them. Character flavor mostly affects POSTFLOP / POST-3RD aggression and entry frequency. **No character spews chips against premium starting hands or jams every street in fixed limit just because they're a "maniac" — that is the model breaking character, not playing it.**
 
-**Voice ≠ action.** Your character's voice, sample lines, and catchphrases shape WHAT YOU SAY in the "say" field. They do NOT determine your action. A laconic cowboy still raises with rolled-up trips. A quiet stoic still bets the unlocked big bet. Never let the "voice" register make you check or fold when the spot calls for a bet.
+**Voice ≠ action.** Your character's personality and voice are flavor only — they do NOT determine your action (and you do not speak here; table talk is a separate step). A laconic cowboy still raises with rolled-up trips. A quiet stoic still bets the unlocked big bet. Never let the persona make you check or fold when the spot calls for a bet.
 
 Tilt and mood color frequencies (a tilted player bluffs more and value-bets thinner; a tilt-proof stoic plays closer to GTO), but neither one folds a clear value hand on later streets.
 
@@ -206,49 +205,24 @@ Name: ${character.name}${archetypeLabel}`)
   if (character.backstory) lines.push(`Backstory: ${character.backstory}`)
   const playStyle = pickPlayStyle(character, gameType)
   if (playStyle) lines.push(`Play style (your default frequency dial — read the section above on how this maps to action): ${playStyle}`)
-  if (character.voice) lines.push(`Voice (this shapes your "say" line, NOT your action): ${character.voice}`)
   if (character.tells) lines.push(`Your tells (keep these in mind, never reveal them): ${character.tells}`)
   if (character.tiltProfile) lines.push(`How you react to losing: ${character.tiltProfile}`)
   if (character.rivalries) lines.push(`Relationships at the table: ${character.rivalries}`)
-  if (character.catchphrases?.length) {
-    lines.push(`Voice samples for rhythm and register (these shape your "say" line only — they are NOT a menu and they are NOT actions): ${character.catchphrases.join(' | ')}`)
-  }
-  if (typeof character.chattinessBase === 'number') {
-    lines.push(`Chattiness: ${character.chattinessBase} — ${chattinessDescriptor(character.chattinessBase)}.`)
-  }
+  // NOTE: voice, catchphrases, and chattiness are intentionally omitted from the decision
+  // prompt — they only shape the spoken line, which is now produced by the table-talk pass.
   if (moodNote) lines.push(`Current mood: ${moodNote}`)
 
   if (typeof memory === 'string' && memory.length > 0) lines.push(memory)
 
   lines.push(`=== OUTPUT FORMAT ===
 
-You will be given a private view of the current poker situation. Decide ONE action.
+You will be given a private view of the current poker situation. Decide ONE action. This is a POKER DECISION ONLY — you do NOT speak here. What you say out loud at the table is handled by a separate step, so do not produce, plan, or include any spoken line.
 
 - You MAY reason inside <think>...</think> tags before answering. Inside <think>, be concrete: name villain's likely range, the board texture, who has equity, what your line accomplishes, what sizing fits. Then pick the +EV action — usually the more aggressive one.
-- Reasoning inside <think> is ONLY for the poker decision. Do NOT deliberate the "say" line inside <think> — do not list candidate phrasings, do not pick between them, do not workshop wording. Wording is throwaway flavor.
 - After </think> (or with no <think> block at all), output EXACTLY one JSON object — nothing else, no markdown fences, no commentary:
-  {"action": "<one of: fold, check, call, raise, all-in>", "amount": <number>, "say": <string or null>}
+  {"action": "<one of: fold, check, call, raise, all-in>", "amount": <number>}
 - "amount" for "raise" is the total amount you are raising TO (not the additional chips). For "call" and "all-in" the engine fills in the amount; you may set it to 0.
-- Only choose an action from the legalActions set provided in the input.
-
-=== TABLE TALK ("say" field) ===
-
-The table is a live chat room and the banter is half the fun. The TABLE CHAT block (when present) is everything any player has said out loud recently — everyone hears you when you speak, and you have heard them. Treat it like a real conversation and lean toward joining in. A table where people talk is far more alive than one where everyone plays in silence.
-
-Your **Chattiness** score (in YOUR CHARACTER) is roughly how often you should put a line in "say": ~0.2 → a line every few turns; ~0.5 → about every other turn; ~0.8+ → nearly every turn. When you're unsure, say something short rather than nothing. When you speak, pick ONE of these:
-
-1. **React to a specific line.** If someone in TABLE CHAT just spoke at you, about you, or about the hand, answer them by name. ("Don't bait me, Dmitri." / "That story again, Reggie?") This is the best kind of talk — it keeps the table from feeling like bots talking past each other, so prioritize it whenever there's a line to answer.
-2. **Comment on the situation** in a way that fits THIS spot — the specific board, sizing, opponent, history. Generic lines that could fit any hand ("Your bet.", "Call.") read as filler, so make it about this moment.
-3. **Express genuine emotion** — a sigh, a small laugh, a mutter, a needle, a little trash talk. Real reactions are interesting; canned ones are not.
-4. **Stay silent** ("say": null) only when nothing fits, or you're a genuinely silent character on a routine spot. Don't reach for silence as the default.
-
-HARD RULES:
-- **Never reveal your hand or your read.** Do not say "I have top pair", "I'm on a draw", "I have you beat", "I have nothing", "I'm bluffing", "I have the nuts", "I'm pot committed", or anything else that puts your actual hole cards, equity, or strategy on the table. Frustration, surprise, and emotion are fine; specifics are not. A pro never tells you what they have, and neither do you.
-- **Do not narrate your own tells.** If your tells say "talks more when bluffing," don't *say* "I'm bluffing." Just talk more, naturally.
-- **Do not repeat yourself.** If you (or anyone else) said something in TABLE CHAT recently, do not reuse that line, phrase, or sentence structure. Same goes for your own catchphrases — they are TONE SAMPLES showing your voice, NOT a menu to pick from. Vary your wording every time; reach for a fresh angle rather than going quiet.
-- **Catchphrases are voice samples, not lines you must use.** Borrow rhythm, vocabulary, and attitude. Do not echo the literal text.
-- Stay in character. Never mention you are an AI, an LLM, a model, a prompt, a system, or anything outside the fiction of the poker table.
-- Keep it to ONE short line, under 100 characters. Don't agonize over the wording — a quick, natural line beats a perfect one, and beats silence.`)
+- Only choose an action from the legalActions set provided in the input.`)
   return lines.join('\n\n')
 }
 
@@ -383,17 +357,27 @@ function formatActionHistory(view, handActions) {
   })
 }
 
-// Render a card as "Jh" instead of "JH" — lowercase suits are easier for the LLM to parse.
-// Also normalizes "10h" (pokersolver's ten format) → "Th" so the prompt is internally consistent.
+// Render a card with its full English name — "King of Hearts" instead of "Kh".
+// Compact codes like "Kh"/"Ks" collide in a small model's reasoning with the range
+// shorthand the strategy text uses ("KQs", "AKo", "77+"), so it starts treating its own
+// hole cards as range notation and ties itself in knots. Full names are unmistakably cards.
+// Handles both "10h" (pokersolver's ten format) and "Th".
+const CARD_RANK_NAME = {
+  A: 'Ace', K: 'King', Q: 'Queen', J: 'Jack', T: 'Ten',
+  9: 'Nine', 8: 'Eight', 7: 'Seven', 6: 'Six', 5: 'Five', 4: 'Four', 3: 'Three', 2: 'Two',
+}
+const CARD_SUIT_NAME = { h: 'Hearts', d: 'Diamonds', c: 'Clubs', s: 'Spades' }
 function fmtCard(card) {
   if (typeof card !== 'string' || card.length < 2) return String(card ?? '')
   let rank = card.slice(0, -1).toUpperCase()
   const suit = card.slice(-1).toLowerCase()
   if (rank === '10') rank = 'T'
-  return rank + suit
+  const rankName = CARD_RANK_NAME[rank] ?? rank
+  const suitName = CARD_SUIT_NAME[suit] ?? suit
+  return `${rankName} of ${suitName}`
 }
-function fmtCards(cards) {
-  return (cards ?? []).map(fmtCard).join(' ')
+export function fmtCards(cards) {
+  return (cards ?? []).map(fmtCard).join(', ')
 }
 
 function viewHoleCards(view) {
@@ -568,24 +552,9 @@ function buildHoldemUserMessage(view, handHistoryNote) {
   }
   const strengthBlock = strengthLines.length ? '\n' + strengthLines.join('\n') : ''
 
-  const allChat = view.tableChat ?? []
-  const ownChat = allChat.filter((c) => c.playerId === view.self.id).slice(-6)
-  const otherChat = allChat.filter((c) => c.playerId !== view.self.id).slice(-12)
-
-  const ownBlock = ownChat.length === 0 ? '' : `\n=== LINES YOU HAVE ALREADY SAID (DO NOT REPEAT OR PARAPHRASE) ===
-These are things YOU said earlier this session. Do not say any of them again. Do not paraphrase them. Do not reuse their sentence structure. If you can't think of a fresh line, set "say": null.
-${ownChat.map((c) => {
-  const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
-  return `  - [${hand} ${c.street ?? ''}] "${c.text}"`
-}).join('\n')}\n`
-
-  const othersBlock = otherChat.length === 0 ? '' : `\n=== RECENT TABLE CHAT (lines from OTHER players — everyone at the table heard these) ===
-${otherChat.map((c) => {
-  const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
-  return `  - [${hand} ${c.street ?? ''}] ${c.name}: ${c.text}`
-}).join('\n')}\n`
-
-  const chatBlock = ownBlock + othersBlock
+  // NOTE: table chat is intentionally NOT part of the decision prompt — the spoken line is
+  // generated by the dedicated table-talk pass (see tableTalk.js), which is where chat
+  // context belongs. This keeps the decision prompt focused purely on the poker spot.
 
   return `
 === TABLE STATE ===
@@ -595,7 +564,7 @@ ${dealerLine}
 Community cards: ${view.communityCards.length ? fmtCards(view.communityCards) : '(none yet)'}
 Pot total: ${view.potTotal}
 Current bet to match: ${view.currentBet}
-Card format note: cards are shown as <rank><suit-letter> with suit lowercase — h=hearts, d=diamonds, c=clubs, s=spades. So "Jh" = Jack of hearts, "Td" = Ten of diamonds, "As" = Ace of spades.
+Card note: every actual card is spelled out in full (e.g. "King of Hearts", "Ten of Diamonds", "Ace of Spades"). Shorthand like "KQs", "AKo", "77+" elsewhere refers to RANGES of starting hands, never to your specific cards — do not confuse the two.
 ${handHistoryNote ? handHistoryNote + '\n' : ''}
 === YOUR HAND ===
 You are ${view.self.name} in seat ${view.self.seatIndex}${selfPos}.
@@ -618,7 +587,7 @@ ${oppLines}
 
 === ACTION HISTORY (this hand) ===
 ${historyLines}
-${chatBlock}
+
 === YOUR LEGAL ACTIONS ===
 ${legalSummary}${potOddsLine}
 
@@ -706,24 +675,8 @@ function buildStudUserMessage(view, handHistoryNote) {
   }
   const strengthBlock = studLines.length ? '\n' + studLines.join('\n') : ''
 
-  const allChat = view.tableChat ?? []
-  const ownChat = allChat.filter((c) => c.playerId === view.self.id).slice(-6)
-  const otherChat = allChat.filter((c) => c.playerId !== view.self.id).slice(-12)
-
-  const ownBlock = ownChat.length === 0 ? '' : `\n=== LINES YOU HAVE ALREADY SAID (DO NOT REPEAT OR PARAPHRASE) ===
-These are things YOU said earlier this session. Do not say any of them again. Do not paraphrase them. Do not reuse their sentence structure. If you can't think of a fresh line, set "say": null.
-${ownChat.map((c) => {
-  const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
-  return `  - [${hand} ${c.street ?? ''}] "${c.text}"`
-}).join('\n')}\n`
-
-  const othersBlock = otherChat.length === 0 ? '' : `\n=== RECENT TABLE CHAT (lines from OTHER players — everyone at the table heard these) ===
-${otherChat.map((c) => {
-  const hand = typeof c.handNumber === 'number' ? `H${c.handNumber}` : '—'
-  return `  - [${hand} ${c.street ?? ''}] ${c.name}: ${c.text}`
-}).join('\n')}\n`
-
-  const chatBlock = ownBlock + othersBlock
+  // Table chat is intentionally excluded from the decision prompt — the spoken line is
+  // produced by the dedicated table-talk pass (tableTalk.js). See the hold'em builder note.
 
   const selfCards = view.self.cards ?? []
   const ownPrivate = selfCards.filter((c) => c.visibility === 'private').map((c) => c.card)
@@ -765,7 +718,7 @@ Limits: ${limits} — ${bigBet}
 ${communityLine}
 Pot total: ${view.potTotal}
 Current bet to match: ${view.currentBet}
-Card format note: cards are shown as <rank><suit-letter> with suit lowercase — h=hearts, d=diamonds, c=clubs, s=spades.
+Card note: every actual card is spelled out in full (e.g. "King of Hearts", "Ten of Diamonds", "Ace of Spades"). Shorthand like "KQs" or "77+" elsewhere refers to RANGES of starting hands, never to your specific cards.
 ${boardsLine}
 ${handHistoryNote ? handHistoryNote + '\n' : ''}
 === YOUR HAND ===
@@ -787,7 +740,7 @@ ${oppLines}
 
 === ACTION HISTORY (this hand) ===
 ${historyLines}
-${chatBlock}
+
 === YOUR LEGAL ACTIONS ===
 ${legalSummary}${potOddsLine}
 
@@ -811,6 +764,8 @@ export function parseActionJson(raw) {
     throw new Error(`Invalid action: ${obj.action}`)
   }
   if (typeof obj.amount !== 'number') obj.amount = 0
-  if (obj.say !== null && typeof obj.say !== 'string') obj.say = null
+  // The spoken line now comes from the dedicated table-talk pass. A legacy `say` key is
+  // tolerated but stripped here so it can never be used as the chat source downstream.
+  delete obj.say
   return obj
 }

@@ -1,5 +1,6 @@
 import { streamChat } from './llmClient.js'
 import { getCharacter, chattinessDescriptor } from './characters.js'
+import { cleanLine } from './lineClean.js'
 
 // Request a single in-character victory line from the LLM. The model sees the character
 // voice + a compact summary of how the hand ended, and returns one short line of table talk.
@@ -27,7 +28,7 @@ export async function requestWinningQuip(characterId, context, { signal, model }
     return null
   }
 
-  return cleanQuip(raw)
+  return cleanLine(raw)
 }
 
 function buildQuipPrompt(character, context) {
@@ -73,22 +74,4 @@ function buildQuipPrompt(character, context) {
     { role: 'system', content: sysLines.join('\n') },
     { role: 'user', content: userLines.join('\n') },
   ]
-}
-
-function cleanQuip(raw) {
-  if (!raw) return null
-  // Strip <think>...</think> blocks the model may emit (we don't show reasoning here).
-  let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
-  // Some models forget the closing tag — drop everything up to the last </think> if present.
-  const lastClose = text.lastIndexOf('</think>')
-  if (lastClose >= 0) text = text.slice(lastClose + '</think>'.length).trim()
-  // First non-empty line only.
-  text = text.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0) ?? ''
-  // Strip wrapping quotes / smart quotes the model loves to add.
-  text = text.replace(/^[`'"‘’“”«»]+/, '')
-             .replace(/[`'"‘’“”«»]+$/, '')
-             .trim()
-  if (!text) return null
-  if (text.length > 140) text = text.slice(0, 137).trimEnd() + '…'
-  return text
 }

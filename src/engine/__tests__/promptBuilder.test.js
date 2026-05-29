@@ -2,33 +2,34 @@ import { describe, it, expect } from 'vitest'
 import { parseActionJson, buildPrompt } from '../../ai/promptBuilder.js'
 
 describe('parseActionJson', () => {
-  it('parses a clean object', () => {
+  it('parses a clean object as {action, amount}', () => {
+    const got = parseActionJson('{"action":"raise","amount":300}')
+    expect(got).toEqual({ action: 'raise', amount: 300 })
+  })
+
+  it('strips a legacy say key (chat now comes from the table-talk pass)', () => {
     const got = parseActionJson('{"action":"raise","amount":300,"say":"bring it"}')
-    expect(got).toEqual({ action: 'raise', amount: 300, say: 'bring it' })
+    expect(got).toEqual({ action: 'raise', amount: 300 })
+    expect(got).not.toHaveProperty('say')
   })
 
   it('strips markdown fences', () => {
-    const got = parseActionJson('```json\n{"action":"check","amount":0,"say":null}\n```')
-    expect(got).toEqual({ action: 'check', amount: 0, say: null })
+    const got = parseActionJson('```json\n{"action":"check","amount":0}\n```')
+    expect(got).toEqual({ action: 'check', amount: 0 })
   })
 
   it('tolerates surrounding whitespace and chatter', () => {
-    const got = parseActionJson('Final answer:\n{"action":"fold","amount":0,"say":null}\n')
+    const got = parseActionJson('Final answer:\n{"action":"fold","amount":0}\n')
     expect(got.action).toBe('fold')
   })
 
   it('coerces missing amount to 0', () => {
-    const got = parseActionJson('{"action":"all-in","say":null}')
+    const got = parseActionJson('{"action":"all-in"}')
     expect(got.amount).toBe(0)
   })
 
-  it('coerces non-string say to null', () => {
-    const got = parseActionJson('{"action":"check","amount":0,"say":42}')
-    expect(got.say).toBe(null)
-  })
-
   it('rejects unknown action', () => {
-    expect(() => parseActionJson('{"action":"surrender","amount":0,"say":null}')).toThrow()
+    expect(() => parseActionJson('{"action":"surrender","amount":0}')).toThrow()
   })
 
   it('rejects malformed JSON', () => {
@@ -75,9 +76,8 @@ describe('buildPrompt (Hold\'em)', () => {
   it('does not include any other-player hole cards in serialized messages', () => {
     const messages = buildPrompt({ view: makeHoldemView(), character })
     const json = JSON.stringify(messages)
-    expect(json).toMatch(/A[hd]/i)
-    expect(json).toContain('Ah')
-    expect(json).toContain('Ad')
+    expect(json).toContain('Ace of Hearts')
+    expect(json).toContain('Ace of Diamonds')
     expect(json).not.toMatch(/"holeCards"\s*:/)
   })
 
@@ -100,14 +100,7 @@ describe('buildPrompt (Hold\'em)', () => {
     expect(system).toContain('Reggie tilts loud.')
   })
 
-  it('omits chat blocks entirely when log is empty', () => {
-    const messages = buildPrompt({ view: makeHoldemView(), character })
-    const user = messages[1].content
-    expect(user).not.toContain('LINES YOU HAVE ALREADY SAID')
-    expect(user).not.toContain('RECENT TABLE CHAT')
-  })
-
-  it('separates own lines (prominent DO NOT REPEAT block) from others lines', () => {
+  it('keeps table chat out of the decision prompt (chat lives in the table-talk pass)', () => {
     const view = makeHoldemView()
     view.tableChat = [
       { handNumber: 1, street: 'preflop', playerId: 'p0', name: 'Op0', characterId: 'the-old-pro', text: 'Your bet.' },
@@ -115,19 +108,19 @@ describe('buildPrompt (Hold\'em)', () => {
     ]
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
+    // No chat sections, and the decision prompt never quotes any spoken line.
+    expect(user).not.toContain('LINES YOU HAVE ALREADY SAID')
+    expect(user).not.toContain('RECENT TABLE CHAT')
+    expect(user).not.toContain('Your bet.')
+    expect(user).not.toContain('Hungry, partner?')
+  })
 
-    const ownIdx = user.indexOf('LINES YOU HAVE ALREADY SAID')
-    const othersIdx = user.indexOf('RECENT TABLE CHAT')
-    expect(ownIdx).toBeGreaterThanOrEqual(0)
-    expect(othersIdx).toBeGreaterThan(ownIdx)
-
-    const ownBlock = user.slice(ownIdx, othersIdx)
-    expect(ownBlock).toContain('Hungry, partner?')
-    expect(ownBlock).not.toContain('Your bet.')
-
-    const othersBlock = user.slice(othersIdx)
-    expect(othersBlock).toContain('Op0: Your bet.')
-    expect(othersBlock).not.toContain('Hungry, partner?')
+  it('decision output format asks for {action, amount} only — no say field', () => {
+    const messages = buildPrompt({ view: makeHoldemView(), character })
+    const system = messages[0].content
+    expect(system).toContain('{"action": "<one of: fold, check, call, raise, all-in>", "amount": <number>}')
+    expect(system).not.toContain('"say"')
+    expect(system).not.toContain('=== TABLE TALK')
   })
 
   it('surfaces computed made hand + draws in YOUR HAND when postflop', () => {
@@ -138,7 +131,7 @@ describe('buildPrompt (Hold\'em)', () => {
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
     expect(user).toMatch(/Your current made hand.*Three of a Kind/i)
-    expect(user).toMatch(/using .*K[hscd] K[hscd] K[hscd]/)
+    expect(user).toMatch(/using .*King of \w+, King of \w+, King of \w+/)
   })
 
   it('relabels first hold\'em postflop raise as "bet N" but keeps preflop raises as "raise to N"', () => {
@@ -240,28 +233,16 @@ describe('buildPrompt (Hold\'em)', () => {
     expect(user).toMatch(/Effective stack vs the smallest live opponent: ~10bb/)
   })
 
-  it('caps OTHERS chat at the most recent 12 entries', () => {
-    const view = makeHoldemView()
-    view.tableChat = Array.from({ length: 20 }, (_, i) => ({
-      handNumber: 1, street: 'preflop', playerId: 'p0', name: 'Op0', characterId: 'the-old-pro',
-      text: `line ${i}`,
-    }))
-    const messages = buildPrompt({ view, character })
-    const user = messages[1].content
-    expect(user).not.toContain('line 7')
-    expect(user).toContain('line 8')
-    expect(user).toContain('line 19')
-  })
-
-  it('renders cards with lowercase suits in community and hole-card lines (Jh, not JH)', () => {
+  it('spells cards out in full in community and hole-card lines (King of Hearts, not Kh/KH)', () => {
     const view = makeHoldemView()
     view.communityCards = ['AS', 'KH', '7D']
     setSelfHole(view, ['JH', 'TC'])
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    expect(user).toMatch(/Community cards: As Kh 7d/)
-    expect(user).toMatch(/Hole cards: Jh Tc/)
-    expect(user).not.toMatch(/Community cards: AS KH 7D/)
+    expect(user).toMatch(/Community cards: Ace of Spades, King of Hearts, Seven of Diamonds/)
+    expect(user).toMatch(/Hole cards: Jack of Hearts, Ten of Clubs/)
+    // No compact code (full names only — the whole point is to avoid range-shorthand collisions).
+    expect(user).not.toMatch(/Community cards:.*\b[2-9TJQKA][hdcs]\b/)
   })
 
   it('emits LIVE PLAYERS list (folded seats excluded)', () => {
@@ -316,18 +297,6 @@ describe('buildPrompt (Hold\'em)', () => {
     expect(user).not.toContain('Pot odds to call')
   })
 
-  it('caps OWN-lines block at the most recent 6 entries', () => {
-    const view = makeHoldemView()
-    view.tableChat = Array.from({ length: 10 }, (_, i) => ({
-      handNumber: 1, street: 'preflop', playerId: 'p1', name: 'Me', characterId: 'the-cowboy',
-      text: `mine ${i}`,
-    }))
-    const messages = buildPrompt({ view, character })
-    const user = messages[1].content
-    expect(user).not.toContain('mine 3')
-    expect(user).toContain('mine 4')
-    expect(user).toContain('mine 9')
-  })
 })
 
 function makeStudView() {
@@ -391,7 +360,7 @@ describe('buildPrompt (stud)', () => {
     const view = makeStudView()
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    expect(user).toContain('their upcards 5c 7d')
+    expect(user).toContain('their upcards Five of Clubs, Seven of Diamonds')
   })
 
   it('renders a Boards snapshot of every player\'s visible upcards near the top', () => {
@@ -412,7 +381,7 @@ describe('buildPrompt (stud)', () => {
     // The boards snapshot is rendered, mentions every player in seat order.
     expect(user).toMatch(/Boards.*RIGHT NOW/)
     // Single line listing all upcards.
-    expect(user).toMatch(/Tyler 3d.*You \(Me\) 8c.*Delia Kd.*Reggie Ks/)
+    expect(user).toMatch(/Tyler Three of Diamonds.*You \(Me\) Eight of Clubs.*Delia King of Diamonds.*Reggie King of Spades/)
     // The boards line appears BEFORE the YOUR HAND section.
     const boardsIdx = user.indexOf('Boards (every')
     const yourHandIdx = user.indexOf('=== YOUR HAND ===')
@@ -427,7 +396,7 @@ describe('buildPrompt (stud)', () => {
     ]
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    expect(user).toMatch(/Tyler 3d 5c \[FOLDED\]/)
+    expect(user).toMatch(/Tyler Three of Diamonds, Five of Clubs \[FOLDED\]/)
   })
 
   it('renders an inferred [visible: ...] tag from opponent upcards (exposed pair)', () => {
@@ -438,7 +407,7 @@ describe('buildPrompt (stud)', () => {
     expect(user).toMatch(/\[visible: pair of eights exposed\]/)
   })
 
-  it('renders ten cards as "T" (not "10") in the made-hand "using" line', () => {
+  it('spells tens out as "Ten of …" (never pokersolver\'s "10h") in the made-hand "using" line', () => {
     const view = makeStudView()
     view.street = 'fifth'
     view.self.cards = [
@@ -450,10 +419,10 @@ describe('buildPrompt (stud)', () => {
     ]
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    // The "using ..." block must not leak pokersolver's "10h" notation.
-    expect(user).not.toMatch(/using[^.\n]*\b10[hscd]\b/)
-    // It should however include the ten in "Th" or "Ts" form.
-    expect(user).toMatch(/using[^.\n]*\bT[hscd]\b/)
+    // The "using ..." block must not leak pokersolver's "10h" notation or any compact code.
+    expect(user).not.toMatch(/using[^.\n]*\b10[hscd]?\b/)
+    // It should spell the ten out in full.
+    expect(user).toMatch(/using[^.\n]*Ten of (Hearts|Spades)/)
   })
 
   it('flags the bring-in role on the self block during 3rd street', () => {
@@ -526,8 +495,8 @@ describe('buildPrompt (stud)', () => {
     const view = makeStudView()
     const messages = buildPrompt({ view, character })
     const user = messages[1].content
-    expect(user).toMatch(/Your down cards \(private.*\): Ah Kh/)
-    expect(user).toMatch(/Your upcards \(face-up.*\): Qh 2h/)
+    expect(user).toMatch(/Your down cards \(private.*\): Ace of Hearts, King of Hearts/)
+    expect(user).toMatch(/Your upcards \(face-up.*\): Queen of Hearts, Two of Hearts/)
   })
 
   it('selects the stud playStyle string for the character', () => {
